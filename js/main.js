@@ -621,6 +621,15 @@ function initOrderForm() {
    «Характеристики»: плавное раскрытие по высоте, пункты проявляются по очереди
    ===================================================================== */
 function initSpecsAccordion() {
+  // «Размерная сетка» у выбора размера — раскрывает вкладку и прокручивает к ней
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-open-acc]');
+    if (!b) return;
+    const det = document.getElementById(b.dataset.openAcc);
+    if (!det) return;
+    det.openSmooth && det.openSmooth();
+    setTimeout(() => det.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+  });
   $$('.specs-acc').forEach(det => {
     const sum = $('summary', det), body = $('.specs-acc__body', det);
     if (!sum || !body) return;
@@ -630,6 +639,7 @@ function initSpecsAccordion() {
       anim = body.animate({ height: [from + 'px', to + 'px'] }, { duration: 420, easing: 'cubic-bezier(.2,.7,.2,1)' });
       anim.onfinish = () => { anim = null; body.style.height = ''; done && done(); };
     };
+    det.openSmooth = () => { if (!det.open) sum.click(); };
     sum.addEventListener('click', e => {
       e.preventDefault();
       if (!det.open) {

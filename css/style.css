@@ -224,6 +224,7 @@ svg.fill { fill: currentColor; stroke: none; }
 .hp-gallery__item img { width: 100%; height: 100%; object-fit: cover; transition: transform .8s var(--ease); }
 .hp-gallery__item:hover img { transform: scale(1.03); }
 .hp-gallery__dots { display: none; }
+.hero-product__grid > * { min-width: 0; }               /* широкая таблица не раздвигает страницу */
 .hp-info { padding: 48px 48px 0; }
 .hp-info__sticky { position: sticky; top: calc(var(--header-h) + 24px); }
 .hp-info__eyebrow { margin: 0 0 10px; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
@@ -236,6 +237,15 @@ svg.fill { fill: currentColor; stroke: none; }
 .hero-product .size { width: auto; height: 52px; border-radius: 4px; }
 .hp-info__cta { min-height: 56px; border-radius: 4px; font-size: 16px; letter-spacing: .02em; }
 .hero-product .perks { margin-top: 20px; }
+.sizes__guide { font-size: 13px; font-weight: 600; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.sizes__guide:hover { color: var(--ink); }
+.size-table__wrap { overflow-x: auto; margin: 0 0 12px; }
+.size-table { width: 100%; border-collapse: collapse; font-size: 14px; text-align: center; white-space: nowrap; }
+.size-table th { padding: 10px 8px; font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); }
+.size-table td { padding: 10px 8px; border-bottom: 1px solid #f0eeea; color: #45433f; }
+.size-table td:first-child, .size-table th:first-child { text-align: left; }
+.size-table tr.is-stock td { color: var(--ink); font-weight: 700; }
+.size-table__note { margin: 0 0 18px; font-size: 13px; line-height: 1.55; color: var(--muted); }
 .specs-acc__text { padding: 0 0 18px; font-size: 15px; line-height: 1.65; color: #45433f; }
 .specs-acc__text p { margin: 0 0 12px; }
 .specs-acc + .specs-acc { margin-top: 0; border-top: 0; }
