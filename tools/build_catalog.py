@@ -313,53 +313,34 @@ def product_main(p):
           </div>
         </div>
 
-        <div class="pdp__info">
-          {f'<p class="eyebrow">{esc(p["brand"])}</p>' if p['brand'] else ''}
-          <h1 class="pdp__title">{esc(p['name'])}</h1>
-          <div class="pdp__badges">
-            {f'<span class="badge">{esc(p["badge"])}</span>' if p['badge'] else ''}
-            <span class="badge badge--stock{' badge--sold' if p['sold'] else ''}">{stock_text}</span>
+        <div class="pdp__info cs">
+          <div class="cs__head">
+            <p class="cs__price"><span>{rub(p['price'])}</span>{f' <s>{rub(p["oldPrice"])}</s>' if p['oldPrice'] else ''}</p>
+            {f'<p class="cs__sizes">Размер <span>{esc(p["size"])}</span></p>' if p['size'] else ''}
+          </div>
+          <h1 class="cs__name">{esc(p['name'])}</h1>
+          <p class="cs__note">{esc(stock_text)}{' · ' + esc(p['badge']) if p['badge'] else ''}</p>
+          {f'<ul class="cs__bullets">{features}</ul>' if features else ''}
+
+          <div class="cs__actions">
+            {'<button class="cs__btn cs__btn--dark" disabled>Продано</button><a class="cs__btn" href="#" data-social="telegram" target="_blank" rel="noopener">Найти похожий</a>' if p['sold'] else
+             '<button class="cs__btn cs__btn--dark" id="pdpOrder">Заказать</button><button class="cs__btn" id="pdpCart">В корзину</button>'}
           </div>
 
-          <div class="price">
-            <span class="price__new">{rub(p['price'])}</span>{old}
-          </div>
-
-          {f"""<div class="sizes">
-            <p class="sizes__label">Размер</p>
-            <div class="sizes__list"><span class="size size--static" aria-checked="true">{esc(p['size'])}</span></div>
-          </div>""" if p['size'] else ''}
-
-          <div class="pdp__actions">
-            {'<button class="btn btn--dark" disabled>Продано</button><a class="btn btn--outline" href="#" data-social="telegram" target="_blank" rel="noopener">Найти похожий</a>' if p['sold'] else
-             '<button class="btn btn--dark" id="pdpOrder">Заказать</button><button class="btn btn--outline" id="pdpCart">В корзину</button>'}
-          </div>
-
-          <ul class="perks">
-            <li>Бесплатная доставка по РФ от 2 позиций</li>
-            <li>Отправка в день заказа или на следующий</li>
-            <li>Ответим в Telegram в течение часа</li>
-          </ul>
-
-          <div class="acc">
-            <details open>
-              <summary>Описание</summary>
-              <div class="acc__body">{desc}</div>
-            </details>
-            <details{' open' if features else ''}>
-              <summary>Характеристики</summary>
-              <div class="acc__body">
-                <dl class="specs">{specs_html}</dl>
-                {f'<ul class="acc__list">{features}</ul>' if features else ''}
-              </div>
-            </details>
-            <details>
-              <summary>Доставка и оплата</summary>
-              <div class="acc__body">
-                <p>Отправляем СДЭК, Почтой России, Boxberry, Яндекс Доставкой и 5Post — в день заказа или на следующий. Упакуем надёжно, чтобы вещь доехала в целости.</p>
-                <p>При заказе двух позиций доставка по России бесплатная.</p>
-              </div>
-            </details>
+          <div class="cs__cols">
+            <div class="cs__col">
+              <h2 class="cs__label">Описание</h2>
+              {desc}
+            </div>
+            <div class="cs__col">
+              <h2 class="cs__label">Размер и состояние</h2>
+              <dl class="cs__specs">{specs_html}</dl>
+            </div>
+            <div class="cs__col">
+              <h2 class="cs__label">Доставка</h2>
+              <p>СДЭК, Почта России, Boxberry, Яндекс Доставка, 5Post — отправка в день заказа или на следующий.</p>
+              <p>От двух позиций — доставка по России бесплатно.</p>
+            </div>
           </div>
         </div>
       </div>

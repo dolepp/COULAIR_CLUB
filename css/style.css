@@ -174,47 +174,6 @@ svg.fill { fill: currentColor; stroke: none; }
 .offer__text { margin: 0 0 30px; font-size: 18px; line-height: 1.5; opacity: .92; }
 
 /* ---------- Главный товар ---------- */
-.product { padding: 56px 0 96px; background: var(--paper); }
-.product__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 64px; align-items: center; }
-.viewer { justify-self: center; }
-
-.viewer {
-  position: relative;
-  aspect-ratio: 704 / 1280;    /* пропорции видео 360° */
-  height: min(calc(100svh - var(--header-h) - 112px), 820px);
-  max-width: 100%;
-  border-radius: var(--radius);
-  background: #e4e5e1;
-  overflow: hidden;
-  cursor: grab;
-  touch-action: pan-y;         /* вертикальный скролл страницы работает, горизонтальный — крутит */
-  user-select: none;
-  perspective: 1400px;
-}
-.viewer.is-dragging { cursor: grabbing; }
-.viewer__frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
-.viewer__progress { position: absolute; left: 18px; right: 18px; top: 66px; height: 3px; border-radius: 3px; background: rgba(0,0,0,.08); overflow: hidden; transition: opacity .4s; }
-.viewer__progress span { display: block; height: 100%; width: 0; background: var(--ink); transition: width .2s; }
-.viewer__progress.is-done { opacity: 0; }
-.viewer__badge {
-  position: absolute; top: 18px; left: 18px;
-  padding: 6px 12px; border-radius: 99px;
-  background: var(--ink); color: #fff; font-size: 13px; font-weight: 800; letter-spacing: .04em;
-}
-.viewer__hint {
-  position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 16px; border-radius: 99px;
-  background: rgba(14,14,16,.72); color: #fff;
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-  font-size: 14px; font-weight: 600; white-space: nowrap;
-  transition: opacity .4s;
-}
-.viewer__hint svg { width: 20px; height: 20px; }
-.viewer.is-touched .viewer__hint { opacity: 0; }
-
-.product__title { margin: 0 0 18px; font-size: clamp(34px, 4vw, 54px); line-height: 1.02; font-weight: 800; letter-spacing: -.025em; }
-.product__desc { margin: 0 0 30px; max-width: 460px; font-size: 17px; line-height: 1.6; color: #45433f; }
 
 .price { display: flex; align-items: baseline; flex-wrap: wrap; gap: 14px; margin-bottom: 30px; }
 .price__new { font-size: 44px; font-weight: 800; letter-spacing: -.02em; }
@@ -256,7 +215,32 @@ svg.fill { fill: currentColor; stroke: none; }
 .specs-acc.is-shown .specs-acc__list li:nth-child(5) { transition-delay: .2s; }
 @media (prefers-reduced-motion: reduce) { .specs-acc__list li { transition: none; } }
 
-/* ---------- Категории (как фото 5) ---------- */
+/* ---------- Главный товар (в духе страницы товара Vans): сетка фото + липкая панель ---------- */
+.hero-product { padding: 0 0 96px; background: var(--paper); }
+.hero-product__grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(360px, 1fr); gap: 0; }   /* колонки равной высоты — панель «липнет» */
+.hp-gallery__track { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.hp-gallery__item { margin: 0; aspect-ratio: 3 / 4; overflow: hidden; background: #f1f1ef; }
+.hp-gallery__item--wide { grid-column: 1 / -1; aspect-ratio: 4 / 5; }
+.hp-gallery__item img { width: 100%; height: 100%; object-fit: cover; transition: transform .8s var(--ease); }
+.hp-gallery__item:hover img { transform: scale(1.03); }
+.hp-gallery__dots { display: none; }
+.hp-info { padding: 48px 48px 0; }
+.hp-info__sticky { position: sticky; top: calc(var(--header-h) + 24px); }
+.hp-info__eyebrow { margin: 0 0 10px; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.hp-info__title { margin: 0 0 14px; font-size: clamp(30px, 2.8vw, 42px); line-height: 1.05; font-weight: 800; letter-spacing: -.02em; }
+.hero-product .price { margin-bottom: 14px; }
+.hero-product .price__new { font-size: 30px; }
+.hp-info__desc { margin: 0 0 26px; font-size: 15px; line-height: 1.6; color: #45433f; }
+.hero-product .sizes__head { display: flex; justify-content: space-between; align-items: baseline; }
+.hero-product .sizes__list { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.hero-product .size { width: auto; height: 52px; border-radius: 4px; }
+.hp-info__cta { min-height: 56px; border-radius: 4px; font-size: 16px; letter-spacing: .02em; }
+.hero-product .perks { margin-top: 20px; }
+.specs-acc__text { padding: 0 0 18px; font-size: 15px; line-height: 1.65; color: #45433f; }
+.specs-acc__text p { margin: 0 0 12px; }
+.specs-acc + .specs-acc { margin-top: 0; border-top: 0; }
+
+ (как фото 5) ---------- */
 .categories { padding: 12px 16px 56px; }
 .categories__list { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
 .cat-btn {
@@ -579,6 +563,45 @@ svg.fill { fill: currentColor; stroke: none; }
 .specs__row dd { margin: 0; font-weight: 600; text-align: right; }
 .related { margin-top: 90px; padding-bottom: 20px; }
 
+/* Страница товара в духе coldseason: фото столбиком на белом, справа мелкий текст капсом */
+@media (min-width: 901px) {
+  .pdp .container { width: min(1360px, 100% - 48px); }
+  .pdp__grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 80px; justify-content: stretch; }
+  .gallery__main { background: #fff; border-radius: 0; overflow: visible; }
+  .gallery__track { flex-direction: column; overflow: visible; gap: 24px; cursor: zoom-in; }
+  .gallery__slide { flex: none; width: 100%; aspect-ratio: 1 / 1; }
+  .gallery__bg { display: none; }
+  .gallery__img { object-fit: contain; }
+  .gallery__arrow, .gallery__counter, .gallery__thumbs { display: none !important; }
+  .gallery__zoom { position: fixed; display: none; }
+  .pdp__info { padding-top: 24px; }
+}
+.cs { font-size: 12px; letter-spacing: .04em; color: #1c1c1c; }
+.cs__head { display: flex; flex-wrap: wrap; gap: 8px 40px; align-items: baseline; margin-bottom: 26px; }
+.cs__price { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .02em; }
+.cs__price s { margin-left: 8px; color: var(--muted); font-weight: 400; }
+.cs__sizes { margin: 0; text-transform: uppercase; color: var(--muted); letter-spacing: .12em; }
+.cs__sizes span { margin-left: 8px; padding: 3px 0; color: var(--ink); border-bottom: 1px solid var(--ink); }
+.cs__name { margin: 0 0 12px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .14em; line-height: 1.5; }
+.cs__note { margin: 0 0 18px; font-size: 12px; color: var(--ink); }
+.cs__bullets { margin: 0 0 26px; padding: 0; list-style: none; display: grid; gap: 12px; font-size: 12px; line-height: 1.5; color: #333; }
+.cs__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 44px; }
+.cs__btn {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 150px; height: 40px; padding: 0 22px;
+  border: 1px solid var(--ink); background: #fff; color: var(--ink);
+  font-size: 11px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; transition: background .2s, color .2s;
+}
+.cs__btn:hover, .cs__btn--dark { background: var(--ink); color: #fff; }
+.cs__btn--dark:hover { background: #333; }
+.cs__btn:disabled { opacity: .45; cursor: not-allowed; }
+.cs__cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 28px 32px; padding-top: 28px; border-top: 1px solid #ececec; }
+.cs__label { margin: 0 0 14px; font-size: 11px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; }
+.cs__col p { margin: 0 0 12px; font-size: 12px; line-height: 1.6; color: #333; }
+.cs__specs { margin: 0; display: grid; gap: 10px; }
+.cs__specs .specs__row { display: block; padding: 0; border: 0; }
+.cs__specs dt { font-size: 11px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+.cs__specs dd { margin: 2px 0 0; font-size: 12px; color: #1c1c1c; font-weight: 500; text-align: left; }
+
 /* Полноэкранный просмотр */
 .lightbox { position: fixed; inset: 0; z-index: 110; background: #0b0b0d; animation: fade .25s; }
 .lightbox__track { display: flex; height: 100%; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
@@ -612,14 +635,22 @@ svg.fill { fill: currentColor; stroke: none; }
   .catalog__track { grid-auto-columns: calc((100% - 4px) / 2.3); }
 }
 @media (max-width: 900px) {
+  .hero-product { padding-bottom: 56px; }
+  .hero-product__grid { grid-template-columns: 1fr; }
+  .hp-gallery { position: relative; }
+  .hp-gallery__track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; gap: 0; }
+  .hp-gallery__track::-webkit-scrollbar { display: none; }
+  .hp-gallery__item, .hp-gallery__item--wide { flex: 0 0 100%; aspect-ratio: 4 / 5; scroll-snap-align: start; }
+  .hp-gallery__dots { display: flex; justify-content: center; gap: 6px; padding: 12px 0 0; }
+  .hp-gallery__dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--line); transition: background .2s, width .2s; }
+  .hp-gallery__dots span.is-active { width: 18px; border-radius: 3px; background: var(--ink); }
+  .hp-info { padding: 24px 16px 0; }
+  .hp-info__sticky { position: static; }
   :root { --header-h: 64px; }
   .header__inner { padding: 0 10px; }
   .header__link, .header__divider { display: none; }
   .header__burger { display: inline-grid; }
   .header__logo img { height: 46px; }
-  .product { padding: 56px 0; }
-  .product__grid { grid-template-columns: 1fr; gap: 34px; }
-  .viewer { height: min(76svh, 680px); }
   .pdp__grid { grid-template-columns: 1fr; gap: 28px; }
   .pdp__info { position: static; }
   .gallery__arrow { display: none; }

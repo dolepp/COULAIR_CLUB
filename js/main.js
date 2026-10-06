@@ -16,14 +16,12 @@ const CONFIG = {
   // Первый экран: фото сменяют друг друга каждые heroInterval мс
   heroInterval: 3000,
 
-  // 360° штанов: кадры, нарезанные из видео (01.jpg … 72.jpg = полный оборот)
-  pants360: { path: 'assets/pants360/', count: 144 },
 
   // Главный товар (блок со штанами 360° на главной). Цена/размеры меняются здесь.
   pants: {
     id: 'pants', type: 'pants', name: 'Широкие горнолыжные штаны',
     price: 7999, oldPrice: 10000, sizes: ['M', 'L', 'XL'],
-    image: 'assets/pants360/001.jpg', url: './#pants', fit: 'contain',
+    image: 'assets/pants/2.jpg', url: './#pants',
   },
 
   // Товары каталога берутся из catalog/catalog.js — его собирает tools/build_catalog.py из папки «товары».
@@ -159,74 +157,20 @@ function initHero() {
 }
 
 /* =====================================================================
-   360° просмотр штанов (смена кадров при перетаскивании)
+   Главный товар: на телефоне фото листаются пальцем, точки показывают номер
    ===================================================================== */
-function initViewer() {
-  const viewer = $('#viewer');
-  if (!viewer) return;
-  const img = $('#viewerFrame');
-  const bar = $('#viewerProgress');
-  const { path, count } = CONFIG.pants360;
-  const src = i => path + String(i + 1).padStart(3, '0') + '.jpg';
-
-  // Предзагрузка всех кадров, чтобы вращение было без подгрузок
-  const frames = [];
-  let loaded = 0;
-  for (let i = 0; i < count; i++) {
-    const im = new Image();
-    im.onload = im.onerror = () => {
-      loaded++;
-      $('span', bar).style.width = (loaded / count * 100) + '%';
-      if (loaded === count) bar.classList.add('is-done');
-    };
-    im.src = src(i);
-    frames.push(im);
-  }
-
-  let pos = 0;                    // текущая позиция в кадрах (дробная)
-  const show = () => {
-    const i = ((Math.round(pos) % count) + count) % count;
-    const want = frames[i].src;
-    if (img.src !== want) img.src = want;
+function initHeroProduct() {
+  const track = $('#hpTrack'), dots = $('#hpDots');
+  if (!track || !dots) return;
+  const items = $$('.hp-gallery__item', track);
+  dots.innerHTML = items.map(() => '<span></span>').join('');
+  const marks = $$('span', dots);
+  const update = () => {
+    const i = Math.round(track.scrollLeft / (track.clientWidth || 1));
+    marks.forEach((m, k) => m.classList.toggle('is-active', k === i));
   };
-
-  // Автоповорот, пока пользователь не взялся крутить: оборот за ~10 секунд
-  let auto = !reducedMotion, last = 0;
-  const spin = t => {
-    if (!auto) return;
-    if (last && loaded === count) { pos += (t - last) / 1000 * (count / 10); show(); }
-    last = t;
-    requestAnimationFrame(spin);
-  };
-  requestAnimationFrame(spin);
-  const stopAuto = () => { auto = false; viewer.classList.add('is-touched'); };
-
-  // протянуть на всю ширину блока = полный оборот
-  let dragging = false, startX = 0, startPos = 0;
-  viewer.addEventListener('pointerdown', e => {
-    stopAuto();
-    dragging = true;
-    startX = e.clientX;
-    startPos = pos;
-    viewer.setPointerCapture(e.pointerId);
-    viewer.classList.add('is-dragging');
-  });
-  viewer.addEventListener('pointermove', e => {
-    if (!dragging) return;
-    pos = startPos - (e.clientX - startX) / viewer.clientWidth * count;
-    show();
-  });
-  const end = () => { dragging = false; viewer.classList.remove('is-dragging'); };
-  viewer.addEventListener('pointerup', end);
-  viewer.addEventListener('pointercancel', end);
-
-  viewer.addEventListener('keydown', e => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    e.preventDefault();
-    stopAuto();
-    pos += e.key === 'ArrowRight' ? -count / 24 : count / 24;
-    show();
-  });
+  track.addEventListener('scroll', () => requestAnimationFrame(update), { passive: true });
+  update();
 }
 
 /* =====================================================================
@@ -430,9 +374,13 @@ function initProductPage() {
     counter: $('#lightboxCounter'),
     prev: $('.gallery__arrow--prev', lb), next: $('.gallery__arrow--next', lb),
   });
-  const openLightbox = () => { openLayer('#lightbox'); requestAnimationFrame(() => lbSlider.jump(main.index())); };
-  $('#galleryTrack').addEventListener('click', openLightbox);
-  $('#galleryZoom').addEventListener('click', openLightbox);
+  const openLightbox = i => { openLayer('#lightbox'); requestAnimationFrame(() => lbSlider.jump(i)); };
+  // на компьютере фото идут столбиком — открываем то, по которому кликнули
+  $('#galleryTrack').addEventListener('click', e => {
+    const slide = e.target.closest('.gallery__slide');
+    openLightbox(slide ? [...slide.parentNode.children].indexOf(slide) : main.index());
+  });
+  $('#galleryZoom').addEventListener('click', () => openLightbox(main.index()));
   // клик мимо фото закрывает просмотр (у картинок нет pointer-events — проверяем по координатам)
   lb.addEventListener('click', e => {
     const slide = e.target.closest('.lightbox__slide');
@@ -1065,7 +1013,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initTicker();
   initHeader();
   initHero();
-  initViewer();
+  initHeroProduct();
   initSizes();
   initLayers();
   initCart();
