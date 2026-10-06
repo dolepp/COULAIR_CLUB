@@ -21,7 +21,7 @@ const CONFIG = {
   pants: {
     id: 'pants', type: 'pants', name: 'Широкие горнолыжные штаны',
     price: 7999, oldPrice: 10000, sizes: ['M', 'L', 'XL'],
-    image: 'assets/pants/2.jpg', url: './#pants',
+    image: 'assets/pants/3.jpg', url: './#pants',
   },
 
   // Товары каталога берутся из catalog/catalog.js — его собирает tools/build_catalog.py из папки «товары».
