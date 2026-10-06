@@ -160,16 +160,99 @@ function initHero() {
    Главный товар: на телефоне фото листаются пальцем, точки показывают номер
    ===================================================================== */
 function initHeroProduct() {
-  const track = $('#hpTrack'), dots = $('#hpDots');
-  if (!track || !dots) return;
-  const items = $$('.hp-gallery__item', track);
-  dots.innerHTML = items.map(() => '<span></span>').join('');
-  const marks = $$('span', dots);
+  const gal = $('#hpGallery'), track = $('#hpTrack');
+  if (!gal || !track) return;
+  const thumbs = $$('.hp-thumb', gal), counter = $('#hpCounter');
+  const prev = $('.hp-arrow--prev', gal), next = $('.hp-arrow--next', gal);
+  const n = $$('.hp-gallery__item', track).length;
+  const index = t => Math.round(t.scrollLeft / (t.clientWidth || 1));
+  const go = (t, i) => t.scrollTo({ left: Math.max(0, Math.min(n - 1, i)) * t.clientWidth, behavior: 'smooth' });
   const update = () => {
-    const i = Math.round(track.scrollLeft / (track.clientWidth || 1));
-    marks.forEach((m, k) => m.classList.toggle('is-active', k === i));
+    const i = index(track);
+    counter.textContent = `${i + 1} / ${n}`;
+    thumbs.forEach((b, k) => b.classList.toggle('is-active', k === i));
+    prev.disabled = i === 0; next.disabled = i === n - 1;
+    const th = thumbs[i]; if (th) th.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   };
   track.addEventListener('scroll', () => requestAnimationFrame(update), { passive: true });
+  prev.addEventListener('click', () => go(track, index(track) - 1));
+  next.addEventListener('click', () => go(track, index(track) + 1));
+  thumbs.forEach(b => b.addEventListener('click', () => go(track, Number(b.dataset.i))));
+  // стрелки клавиатуры — когда курсор над галереей или она в фокусе
+  let hover = false;
+  gal.addEventListener('mouseenter', () => { hover = true; });
+  gal.addEventListener('mouseleave', () => { hover = false; });
+  document.addEventListener('keydown', e => {
+    if (lb || !(hover || gal.contains(document.activeElement))) return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); go(track, index(track) + 1); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); go(track, index(track) - 1); }
+  });
+  // на компьютере фото можно тянуть мышкой, как пальцем
+  let drag = null;
+  track.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') drag = { x: e.clientX, left: track.scrollLeft, moved: false }; });
+  window.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x;
+    if (Math.abs(dx) > 5) { drag.moved = true; track.style.scrollSnapType = 'none'; track.style.scrollBehavior = 'auto'; }
+    if (drag.moved) track.scrollLeft = drag.left - dx;
+  });
+  window.addEventListener('pointerup', e => {
+    if (!drag) return;
+    const d = drag; drag = null;
+    track.style.scrollSnapType = ''; track.style.scrollBehavior = '';
+    if (d.moved) {
+      const dx = e.clientX - d.x, from = Math.round(d.left / track.clientWidth);
+      go(track, Math.abs(dx) > track.clientWidth * 0.12 ? from - Math.sign(dx) : from);
+      track.dataset.dragged = '1'; setTimeout(() => { delete track.dataset.dragged; }, 50);
+    }
+  });
+
+  // полноэкранный просмотр
+  let lb = null;
+  const openLb = i => {
+    lb = document.createElement('div');
+    lb.className = 'hp-lightbox';
+    lb.setAttribute('role', 'dialog'); lb.setAttribute('aria-modal', 'true');
+    lb.innerHTML = `<div class="hp-gallery__track">${$$('.hp-gallery__item img', track).map(im => `<figure class="hp-gallery__item"><img src="${im.getAttribute('src')}" alt=""></figure>`).join('')}</div>
+      <button class="icon-btn hp-lightbox__close" aria-label="Закрыть"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <button class="hp-arrow hp-arrow--prev" aria-label="Предыдущее фото"><svg viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg></button>
+      <button class="hp-arrow hp-arrow--next" aria-label="Следующее фото"><svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg></button>
+      <span class="hp-counter"></span>`;
+    document.body.appendChild(lb);
+    document.body.style.overflow = 'hidden';
+    const t = $('.hp-gallery__track', lb), c = $('.hp-counter', lb), lp = $('.hp-arrow--prev', lb), ln = $('.hp-arrow--next', lb);
+    const upd = () => { const k = index(t); c.textContent = `${k + 1} / ${n}`; lp.disabled = k === 0; ln.disabled = k === n - 1; };
+    t.style.scrollBehavior = 'auto'; t.scrollLeft = i * t.clientWidth; t.style.scrollBehavior = ''; upd();
+    t.addEventListener('scroll', () => requestAnimationFrame(upd), { passive: true });
+    lp.addEventListener('click', () => go(t, index(t) - 1));
+    ln.addEventListener('click', () => go(t, index(t) + 1));
+    $('.hp-lightbox__close', lb).addEventListener('click', closeLb);
+    // клик мимо фото закрывает (у картинок нет pointer-events — сверяем координаты с видимой областью фото)
+    t.addEventListener('click', e => {
+      const fig = e.target.closest('.hp-gallery__item'); if (!fig) return;
+      const im = $('img', fig), r = im.getBoundingClientRect();
+      const k = Math.min(r.width / (im.naturalWidth || 1), r.height / (im.naturalHeight || 1));
+      const w = (im.naturalWidth || r.width) * k, h = (im.naturalHeight || r.height) * k;
+      const x0 = r.left + (r.width - w) / 2, y0 = r.top + (r.height - h) / 2;
+      if (e.clientX < x0 || e.clientX > x0 + w || e.clientY < y0 || e.clientY > y0 + h) closeLb();
+    });
+    lb.keyHandler = e => {
+      if (e.key === 'Escape') closeLb();
+      if (e.key === 'ArrowRight') go(t, index(t) + 1);
+      if (e.key === 'ArrowLeft') go(t, index(t) - 1);
+    };
+    document.addEventListener('keydown', lb.keyHandler);
+  };
+  const closeLb = () => {
+    if (!lb) return;
+    const t = $('.hp-gallery__track', lb), k = index(t);
+    document.removeEventListener('keydown', lb.keyHandler);
+    lb.remove(); lb = null;
+    document.body.style.overflow = '';
+    track.style.scrollBehavior = 'auto'; track.scrollLeft = k * track.clientWidth; track.style.scrollBehavior = '';
+  };
+  track.addEventListener('click', e => { if (!track.dataset.dragged && e.target.closest('.hp-gallery__item')) openLb(index(track)); });
+  $('#hpZoom').addEventListener('click', () => openLb(index(track)));
   update();
 }
 
