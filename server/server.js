@@ -60,18 +60,20 @@ function cleanContact(c = {}) {
   const str = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
   const name = str(c.name, 120);
   const email = str(c.email, 120).toLowerCase();
-  const telegram = str(c.telegram, 64);
+  const noTelegram = !!c.noTelegram;
+  const telegram = noTelegram ? '' : str(c.telegram, 64).replace(/^(?:https?:\/\/)?t\.me\//i, '');
   let digits = String(c.phone ?? '').replace(/\D/g, '');
   if (digits.length === 11 && digits[0] === '8') digits = '7' + digits.slice(1);
 
   const errors = {};
   if (name.split(' ').filter(w => w.length > 1).length < 2) errors.name = 'Укажите фамилию и имя полностью';
   if (!/^7\d{10}$/.test(digits)) errors.phone = 'Проверьте номер телефона';
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) errors.email = 'Проверьте email — на него придёт чек и письмо о заказе';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) errors.email = 'Проверьте email';
+  if (!noTelegram && !/^(?:@?[A-Za-z0-9_]{4,32}|\+?[\d\s()-]{10,18})$/.test(telegram)) errors.telegram = 'Укажите Telegram или отметьте «Нет Telegram»';
   if (Object.keys(errors).length) { const e = new BadRequest('Проверьте выделенные поля'); e.fields = errors; throw e; }
 
   const phone = `+7 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 9)}-${digits.slice(9, 11)}`;
-  return { name, phone, email, telegram };
+  return { name, phone, email, telegram, noTelegram };
 }
 
 /* ---------- расчёт корзины и доставки ---------- */

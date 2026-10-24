@@ -67,8 +67,7 @@
           store.del('coulair-pending');
         }
         body.innerHTML = `${ICON.ok}<h1>Заказ №${esc(o.id)} оплачен</h1>
-          <p class="order-card__lead">Спасибо! Письмо с составом заказа отправили на <b>${esc(o.email)}</b>.
-          Соберём посылку и пришлём номер для отслеживания СДЭК.</p>
+          <p class="order-card__lead">Спасибо! Соберём посылку и пришлём номер для отслеживания СДЭК.</p>
           ${details(o)}<a class="btn btn--dark btn--wide" href="./">Вернуться в магазин</a>`;
       } else if (o.status === 'pending') {
         body.innerHTML = `${ICON.wait}<h1>Ждём подтверждения оплаты</h1>

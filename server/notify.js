@@ -22,7 +22,8 @@ export function telegramText(o) {
     `ФИО: <code>${esc(o.contact.name)}</code>`,
     `Телефон: <code>${esc(o.contact.phone)}</code>`,
     `Email: <code>${esc(o.contact.email)}</code>`,
-    o.contact.telegram ? `Telegram: ${esc(o.contact.telegram)}` : '',
+    o.contact.telegram ? `Telegram: ${esc(o.contact.telegram.replace(/^(?=[A-Za-z])/, '@'))}`
+      : o.contact.noTelegram ? 'Telegram: нет' : '',
     '',
     `<b>Доставка СДЭК — ${TYPE_LABEL[d.point.type] || d.point.type}</b>`,
     `Город: ${esc(d.cityName)} (код ${d.cityCode})`,

@@ -72,10 +72,10 @@
                 <input name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="+7 (___) ___-__-__"></label>
               <label class="field"><span>Email</span>
                 <input name="email" type="email" autocomplete="email" inputmode="email" placeholder="name@mail.ru"></label>
-              <label class="field co-grid__full"><span>Telegram <em>(необязательно)</em></span>
+              <label class="field co-grid__full"><span>Telegram</span>
                 <input name="telegram" type="text" autocomplete="off" placeholder="@username"></label>
+              <label class="check co-grid__full"><input type="checkbox" name="noTelegram"><span>Нет Telegram</span></label>
             </div>
-            <p class="co-note">На email придёт чек и письмо с составом заказа.</p>
           </section>
 
           <section class="co-sec">
@@ -432,6 +432,14 @@
   function showError(text) { const e = $('#coError'); e.textContent = text; e.hidden = !text; }
 
   const CONTACT_FIELDS = ['name', 'phone', 'email', 'telegram'];
+  // @username, ссылка t.me/… или номер телефона, к которому привязан Telegram
+  const TG_RE = /^(?:@?[A-Za-z0-9_]{4,32}|\+?[\d\s()-]{10,18})$/;
+  const tgValue = v => v.trim().replace(/^(?:https?:\/\/)?t\.me\//i, '');
+  function syncTelegram() {
+    const f = form(), off = f.elements.noTelegram.checked;
+    f.elements.telegram.disabled = off;
+    if (off) { f.elements.telegram.value = ''; f.elements.telegram.closest('.field').classList.remove('is-invalid'); }
+  }
   function initForm() {
     const f = form();
     const phone = f.elements.phone;
@@ -441,10 +449,14 @@
     // черновик контактов — чтобы не вводить заново при следующем заказе
     const saved = store.get('coulair-contact', {});
     CONTACT_FIELDS.forEach(n => { if (saved[n]) f.elements[n].value = saved[n]; });
+    f.elements.noTelegram.checked = !!saved.noTelegram;
+    syncTelegram();
     f.addEventListener('input', e => {
       const n = e.target.name;
-      if (CONTACT_FIELDS.includes(n)) {
-        store.set('coulair-contact', Object.fromEntries(CONTACT_FIELDS.map(k => [k, f.elements[k].value.trim()])));
+      if (n === 'noTelegram') syncTelegram();
+      if (CONTACT_FIELDS.includes(n) || n === 'noTelegram') {
+        store.set('coulair-contact', { ...Object.fromEntries(CONTACT_FIELDS.map(k => [k, f.elements[k].value.trim()])),
+          noTelegram: f.elements.noTelegram.checked });
       }
       const field = e.target.closest('.field');
       if (field) field.classList.remove('is-invalid');
@@ -460,6 +472,7 @@
       if (f.elements.name.value.trim().split(/\s+/).filter(w => w.length > 1).length < 2) mark('name');
       if (phone.value.replace(/\D/g, '').length !== 11) mark('phone');
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.elements.email.value.trim())) mark('email');
+      if (!f.elements.noTelegram.checked && !TG_RE.test(tgValue(f.elements.telegram.value))) mark('telegram');
       if (!st.city) mark('city');
       if (bad) { showError('Проверьте выделенные поля'); bad.focus(); return; }
       if (!st.point) { showError('Выберите пункт выдачи или постамат'); $('#coDelivery').scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
@@ -470,7 +483,8 @@
       try {
         const res = await api('/orders', {
           items: st.items, fromCart: st.fromCart, agree: true,
-          contact: Object.fromEntries(CONTACT_FIELDS.map(k => [k, f.elements[k].value.trim()])),
+          contact: { ...Object.fromEntries(CONTACT_FIELDS.map(k => [k, f.elements[k].value.trim()])),
+            telegram: tgValue(f.elements.telegram.value), noTelegram: f.elements.noTelegram.checked },
           comment: f.elements.comment.value.trim(),
           cityCode: st.city.code, cityName: st.city.name, pointCode: st.point.code,
         });
