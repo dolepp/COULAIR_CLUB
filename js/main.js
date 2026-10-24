@@ -20,7 +20,7 @@ const CONFIG = {
   // Главный товар (блок со штанами 360° на главной). Цена/размеры меняются здесь.
   pants: {
     id: 'pants', type: 'pants', name: 'Широкие горнолыжные штаны',
-    price: 7999, oldPrice: 10000, sizes: ['S', 'M', 'L', 'XL'],
+    price: 7890, oldPrice: 10000, sizes: ['S', 'M', 'L', 'XL'],
     image: 'assets/pants/3.jpg', url: './#pants',
   },
 
