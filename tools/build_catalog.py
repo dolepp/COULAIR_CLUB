@@ -199,7 +199,8 @@ def parse_product(folder: Path):
     return {
         'id': slugify(re.sub(r'(?i)горнолыжн\w*|сноубордическ\w*', '', folder.name)),
         'folder': folder,
-        'avito': meta.get('авито', '').lower() in YES,
+        'avitoCrop': meta.get('авито', '').lower() in YES,
+        'avito': meta.get('ссылка авито', ''),
         'sources': images,
         'order': to_int(meta.get('порядок')) or 1000,
         'type': type_,
@@ -224,13 +225,13 @@ def export_images(p):
     names = []
     for i, src in enumerate(p['sources'], 1):
         if Image is None:
-            if p['avito']:
+            if p['avitoCrop']:
                 print(f'  ! Pillow не установлен — водяной знак на {src.name} не обрезан (pip install Pillow)')
             name = f'{i}{src.suffix.lower()}'
             shutil.copyfile(src, out / name)
         else:
             im = ImageOps.exif_transpose(Image.open(src)).convert('RGB')
-            if p['avito']:
+            if p['avitoCrop']:
                 im = im.crop((0, 0, im.width, im.height - round(im.height * AVITO_CROP)))
             im.thumbnail((MAX_SIDE, MAX_SIDE))
             name = f'{i}.jpg'
@@ -324,6 +325,7 @@ def product_main(p):
 
           <div class="cs__actions">
             {'<button class="cs__btn cs__btn--dark" disabled>Продано</button><a class="cs__btn" href="#" data-social="telegram" target="_blank" rel="noopener">Найти похожий</a>' if p['sold'] else
+             f'<a class="cs__btn cs__btn--dark" href="{esc(p["avito"])}" target="_blank" rel="noopener">Купить на Авито</a>' if p['avito'] else
              '<button class="cs__btn cs__btn--dark" id="pdpOrder">Заказать</button><button class="cs__btn" id="pdpCart">В корзину</button>'}
           </div>
 
@@ -338,8 +340,9 @@ def product_main(p):
             </div>
             <div class="cs__col">
               <h2 class="cs__label">Доставка</h2>
-              <p>СДЭК, Почта России, Boxberry, Яндекс Доставка, 5Post — отправка в день заказа или на следующий.</p>
-              <p>От двух позиций — доставка по России бесплатно.</p>
+              {'<p>Этот товар продаётся на Авито: заказ, оплата и доставка — там, через Авито Доставку.</p>' if p['avito'] else
+               '<p>СДЭК, Почта России, Boxberry, Яндекс Доставка, 5Post — отправка в день заказа или на следующий.</p>\n'
+               '              <p>От двух позиций — доставка по России бесплатно.</p>'}
             </div>
           </div>
         </div>
@@ -430,7 +433,8 @@ def main():
         export_images(p)
 
     head, top, bottom = site_chrome()
-    public = [{k: v for k, v in p.items() if k not in ('folder', 'sources', 'avito', 'order')} for p in products]
+    public = [{k: v for k, v in p.items() if k not in ('folder', 'sources', 'avitoCrop', 'order') and (k != 'avito' or v)}
+              for p in products]
     (CATALOG / 'catalog.js').write_text(
         '/* Создаётся автоматически из папки «товары» — руками не править */\n'
         'window.CATALOG = ' + json.dumps(public, ensure_ascii=False, indent=2) + ';\n', encoding='utf-8')

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <base href="../">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Заказ — Coulair Club</title>
+  <link rel="icon" type="image/png" href="assets/logo-black.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="order-page">
+    <div class="order-card" id="orderCard">
+      <a href="./"><img class="order-card__logo" src="assets/logo-black.png" alt="Coulair Club"></a>
+      <div id="orderBody">
+        <div class="order-card__icon is-wait"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/></svg></div>
+        <h1>Проверяем оплату…</h1>
+      </div>
+    </div>
+  </main>
+
+  <script>
+  (() => {
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id'), token = params.get('t');
+    const body = document.getElementById('orderBody');
+    const rub = n => Number(n).toLocaleString('ru-RU') + ' ₽';
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const ICON = {
+      ok: '<div class="order-card__icon"><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>',
+      wait: '<div class="order-card__icon is-wait"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/></svg></div>',
+      fail: '<div class="order-card__icon is-fail"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></svg></div>',
+    };
+    const TYPE = { PVZ: 'Пункт выдачи СДЭК', POSTAMAT: 'Постамат СДЭК' };
+    const store = {
+      get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+      set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+      del(k) { try { localStorage.removeItem(k); } catch {} },
+    };
+
+    function details(o) {
+      const d = o.delivery;
+      const days = d.daysMin === d.daysMax ? d.daysMin : d.daysMin + '–' + d.daysMax;
+      return `
+        <ul class="co-items">${o.items.map(i => `
+          <li class="co-item"><img src="${esc(i.image)}" alt="">
+            <div><p class="co-item__name">${esc(i.name)}</p><p class="co-item__meta">${i.size ? 'Размер ' + esc(i.size) + ' · ' : ''}${i.qty} шт.</p></div>
+            <strong>${rub(i.price * i.qty)}</strong></li>`).join('')}</ul>
+        <div class="co-total">
+          <div class="co-total__row"><span>Товары</span><span>${rub(o.goods)}</span></div>
+          <div class="co-total__row"><span>Доставка СДЭК</span><span>${d.cost ? rub(d.cost) : '<span class="co-free">Бесплатно</span>'}</span></div>
+          <div class="co-total__row co-total__sum"><span>${o.status === 'paid' ? 'Оплачено' : 'К оплате'}</span><span>${rub(o.total)}</span></div>
+        </div>
+        <p class="order-card__ship"><strong>${TYPE[d.type] || 'СДЭК'}</strong>${esc(d.city)}, ${esc(d.address)}<br>
+          ${d.daysMin ? `<span class="co-muted">Срок после отправки: ${days} дн.</span>` : ''}</p>`;
+    }
+
+    function render(o) {
+      if (o.status === 'paid') {
+        const pending = store.get('coulair-pending');
+        if (pending && pending.id === o.id) {
+          if (pending.fromCart) store.set('coulair-cart', []);
+          store.del('coulair-pending');
+        }
+        body.innerHTML = `${ICON.ok}<h1>Заказ №${esc(o.id)} оплачен</h1>
+          <p class="order-card__lead">Спасибо! Письмо с составом заказа отправили на <b>${esc(o.email)}</b>.
+          Соберём посылку и пришлём номер для отслеживания СДЭК.</p>
+          ${details(o)}<a class="btn btn--dark btn--wide" href="./">Вернуться в магазин</a>`;
+      } else if (o.status === 'pending') {
+        body.innerHTML = `${ICON.wait}<h1>Ждём подтверждения оплаты</h1>
+          <p class="order-card__lead">Обычно это занимает несколько секунд. Страница обновится сама.</p>
+          ${details(o)}${o.paymentUrl ? `<a class="btn btn--dark btn--wide" href="${esc(o.paymentUrl)}">Вернуться к оплате</a>` : ''}
+          <a class="btn btn--ghost btn--wide" href="./">В магазин</a>`;
+      } else if (o.status === 'mismatch') {
+        body.innerHTML = `${ICON.wait}<h1>Проверяем заказ №${esc(o.id)}</h1>
+          <p class="order-card__lead">Оплата получена, но нам нужно проверить детали. Мы свяжемся с вами в ближайшее время.</p>
+          <a class="btn btn--dark btn--wide" href="https://t.me/coulair" target="_blank" rel="noopener">Написать в Telegram</a>`;
+      } else {
+        body.innerHTML = `${ICON.fail}<h1>Оплата не прошла</h1>
+          <p class="order-card__lead">Деньги не списаны. Корзина сохранена — можно оформить заказ ещё раз
+          или написать нам в Telegram, поможем.</p>
+          <a class="btn btn--dark btn--wide" href="./">Вернуться к корзине</a>
+          <a class="btn btn--ghost btn--wide" href="https://t.me/coulair" target="_blank" rel="noopener">Написать в Telegram</a>`;
+      }
+    }
+
+    function notFound() {
+      body.innerHTML = `${ICON.fail}<h1>Заказ не найден</h1>
+        <p class="order-card__lead">Проверьте ссылку или напишите нам в Telegram.</p>
+        <a class="btn btn--dark btn--wide" href="./">В магазин</a>`;
+    }
+
+    let tries = 0;
+    async function load() {
+      if (!id || !token) return notFound();
+      try {
+        const res = await fetch(`/api/order?id=${encodeURIComponent(id)}&t=${encodeURIComponent(token)}`, { cache: 'no-store' });
+        if (res.status === 404) return notFound();
+        const { order } = await res.json();
+        render(order);
+        // ждём webhook ЮKassa: сначала часто, потом реже, максимум ~5 минут
+        if (order.status === 'pending' && ++tries < 60) setTimeout(load, tries < 20 ? 3000 : 8000);
+      } catch {
+        if (++tries < 60) setTimeout(load, 5000);
+      }
+    }
+    load();
+  })();
+  </script>
+</body>
+</html>

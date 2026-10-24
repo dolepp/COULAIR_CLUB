@@ -35,7 +35,7 @@ jobs:
       - name: Сложить файлы сайта
         run: |
           mkdir _site
-          cp -r index.html css js assets catalog CNAME .nojekyll _site/
+          cp -r index.html css js assets catalog offer order payment privacy CNAME .nojekyll _site/
 
       - name: Версии файлов (чтобы браузеры не держали старые копии)
         run: python tools/stamp_assets.py _site

@@ -20,16 +20,14 @@ const CONFIG = {
   // Главный товар (блок со штанами 360° на главной). Цена/размеры меняются здесь.
   pants: {
     id: 'pants', type: 'pants', name: 'Широкие горнолыжные штаны',
-    price: 7999, oldPrice: 10000, sizes: ['M', 'L', 'XL'],
+    price: 7999, oldPrice: 10000, sizes: ['S', 'M', 'L', 'XL'],
     image: 'assets/pants/3.jpg', url: './#pants',
   },
 
   // Товары каталога берутся из catalog/catalog.js — его собирает tools/build_catalog.py из папки «товары».
+  // Цены отсюда и из каталога сервер оплаты (/opt/coulair-api) читает сам — менять их нужно только здесь.
 
-  // Куда отправлять заявки. Пусто — заявка только показывается как «принята» (и пишется в консоль).
-  // Подойдёт любой URL, принимающий POST JSON: свой сервер, Formspree и т.п.
-  orderEndpoint: '',
-
+  // Бесплатная доставка от стольких позиций в заказе (0 — всегда платная)
   freeShippingFrom: 2,
 };
 
@@ -257,7 +255,7 @@ function initHeroProduct() {
 }
 
 /* =====================================================================
-   Размеры + заказ главного товара
+   Размеры + добавление главного товара в корзину
    ===================================================================== */
 let selectedSize = null;
 function initSizes() {
@@ -281,7 +279,9 @@ function initSizes() {
       $('#sizeError').hidden = false;
       return;
     }
-    openOrder([{ id: CONFIG.pants.id, size: selectedSize, qty: 1 }]);
+    addToCart(CONFIG.pants.id, selectedSize);
+    const btn = $('#cartBtn');
+    btn.classList.remove('is-bump'); void btn.offsetWidth; btn.classList.add('is-bump');
   });
 }
 
@@ -297,7 +297,10 @@ function cardHtml(p) {
   const sale = p.oldPrice ? `<span class="card__sale">−${Math.round((1 - p.price / p.oldPrice) * 100)}%</span>` : '';
   const badge = p.sold ? '<span class="card__badge card__badge--sold">Продано</span>'
     : p.badge ? `<span class="card__badge">${escapeHtml(p.badge)}</span>` : '';
-  const add = p.sold ? '' : `
+  const add = p.sold ? '' : p.avito ? `
+      <a class="card__add" href="${p.avito}" target="_blank" rel="noopener" aria-label="Купить на Авито: ${escapeHtml(p.name)}">
+        <svg viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg>
+      </a>` : `
       <button class="card__add ${inCart ? 'is-added' : ''}" data-add="${p.id}" aria-label="Добавить в корзину: ${escapeHtml(p.name)}">
         ${inCart ? ICONS.check : ICONS.plus}
       </button>`;
@@ -481,7 +484,7 @@ function initProductPage() {
     if (e.key === 'ArrowLeft') main.go(main.index() - 1);
   });
 
-  if (!p.sold) {
+  if (!p.sold && !p.avito) {
     $('#pdpOrder').addEventListener('click', () => openOrder([{ id: p.id, size: p.size || null, qty: 1 }]));
     $('#pdpCart').addEventListener('click', () => addToCart(p.id));
   }
@@ -491,7 +494,7 @@ function initProductPage() {
 /* =====================================================================
    Корзина
    ===================================================================== */
-let cart = store.get('coulair-cart', []).filter(i => findProduct(i.id) && !findProduct(i.id).sold);
+let cart = store.get('coulair-cart', []).filter(i => findProduct(i.id) && !findProduct(i.id).sold && !findProduct(i.id).avito);
 
 function saveCart() { store.set('coulair-cart', cart); renderCart(); rerenderCards(); }
 function cartCount(items = cart) { return items.reduce((s, i) => s + i.qty, 0); }
@@ -504,6 +507,8 @@ function addToCart(id, size = null) {
   const found = cart.find(i => i.id === id && i.size === size);
   const inCart = cart.filter(i => i.id === id).reduce((n, i) => n + i.qty, 0);
   if (p.sold) { toast('Этот товар уже продан'); return; }
+  // такие товары продаются на Авито — ведём туда
+  if (p.avito) { window.open(p.avito, '_blank', 'noopener'); return; }
   if (p.stock && inCart >= p.stock) {
     toast(p.stock === 1 ? 'Это единственный экземпляр — он уже в корзине' : 'Больше нет в наличии');
     return;
@@ -523,11 +528,18 @@ function renderCart() {
   const list = $('#cartList');
   list.innerHTML = cart.length ? cart.map((i, idx) => {
     const p = findProduct(i.id);
+    const inCart = cart.filter(x => x.id === i.id).reduce((n, x) => n + x.qty, 0);
+    const maxed = p.stock && inCart >= p.stock;
     return `<li class="drawer__item">
       <img src="${imgOf(p)}" alt="" onerror="this.onerror=null;this.src='${PLACEHOLDERS[p.type]}'">
       <div>
         <p class="drawer__item-name">${escapeHtml(p.name)}</p>
-        <p class="drawer__item-meta">${i.size ? 'Размер ' + i.size + ' · ' : ''}${i.qty} шт. · ${rub(p.price * i.qty)}</p>
+        <p class="drawer__item-meta">${i.size ? 'Размер ' + escapeHtml(i.size) + ' · ' : ''}${rub(p.price * i.qty)}</p>
+        <div class="qty">
+          <button class="qty__btn" data-qty="-1" data-idx="${idx}" aria-label="Меньше">−</button>
+          <span class="qty__n">${i.qty}</span>
+          <button class="qty__btn" data-qty="1" data-idx="${idx}" aria-label="Больше"${maxed ? ' disabled' : ''}>+</button>
+        </div>
       </div>
       <button class="drawer__remove" data-remove="${idx}">Убрать</button>
     </li>`;
@@ -551,6 +563,15 @@ function initCart() {
     if (btn) { e.preventDefault(); addToCart(btn.dataset.add); }
   });
   $('#cartList').addEventListener('click', e => {
+    const q = e.target.closest('[data-qty]');
+    if (q) {
+      const item = cart[Number(q.dataset.idx)];
+      if (!item) return;
+      item.qty += Number(q.dataset.qty);
+      if (item.qty < 1) cart.splice(Number(q.dataset.idx), 1);
+      saveCart();
+      return;
+    }
     const btn = e.target.closest('[data-remove]');
     if (!btn) return;
     cart.splice(Number(btn.dataset.remove), 1);
@@ -595,109 +616,23 @@ function initLayers() {
 }
 
 /* =====================================================================
-   Заявка
+   Оформление заказа: модуль js/checkout.js подгружается при первом открытии
    ===================================================================== */
-let orderItems = [];
-let orderFromCart = false;
+let checkoutLoading = null;
+function loadCheckout() {
+  return checkoutLoading || (checkoutLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = withV('js/checkout.js');
+    s.onload = resolve;
+    s.onerror = () => { checkoutLoading = null; s.remove(); reject(); };
+    document.head.appendChild(s);
+  }));
+}
 
 function openOrder(items, fromCart = false) {
-  orderItems = items;
-  orderFromCart = fromCart;
-  const rows = items.map(i => {
-    const p = findProduct(i.id);
-    return `<div class="order-summary__row"><span>${escapeHtml(p.name)}${i.size ? ', ' + i.size : ''}${i.qty > 1 ? ' × ' + i.qty : ''}</span><span>${rub(p.price * i.qty)}</span></div>`;
-  }).join('');
-  const free = cartCount(items) >= CONFIG.freeShippingFrom;
-  $('#orderSummary').innerHTML = rows +
-    `<div class="order-summary__row order-summary__total"><span>Итого</span><span>${rub(cartSum(items))}</span></div>` +
-    (free ? '<div class="order-summary__promo">Доставка по РФ — бесплатно</div>' : '');
-
-  $('#orderForm').hidden = false;
-  $('#formDone').hidden = true;
-  $('#formError').hidden = true;
-  openLayer('#orderModal');
-}
-
-function formatPhone(value) {
-  // Всё после «+7» — местный номер; иначе ведущие 8/7 считаем кодом страны
-  let d;
-  if (value.startsWith('+7')) {
-    d = value.slice(2).replace(/\D/g, '');
-    if (d.length === 11 && /^[78]/.test(d)) d = d.slice(1);   // вставили «8999…» после «+7»
-  }
-  else { d = value.replace(/\D/g, ''); if (d.length > 10 || d[0] === '8' || d[0] === '7') d = d.replace(/^[78]/, ''); }
-  d = d.slice(0, 10);
-  if (!d) return value.startsWith('+') ? '+7' : '';
-  const p = [d.slice(0, 3), d.slice(3, 6), d.slice(6, 8), d.slice(8, 10)];
-  let out = '+7 (' + p[0];
-  if (p[0].length === 3) out += ')';
-  if (p[1]) out += ' ' + p[1];
-  if (p[2]) out += '-' + p[2];
-  if (p[3]) out += '-' + p[3];
-  return out;
-}
-
-async function sendOrder(payload) {
-  if (!CONFIG.orderEndpoint) {
-    console.info('[Coulair] Заявка (orderEndpoint не задан):', payload);
-    return;
-  }
-  const res = await fetch(CONFIG.orderEndpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-}
-
-function initOrderForm() {
-  const form = $('#orderForm');
-  const phone = form.elements.phone;
-  phone.addEventListener('input', () => { phone.value = formatPhone(phone.value); });
-  phone.addEventListener('focus', () => { if (!phone.value) phone.value = '+7'; });
-
-  form.addEventListener('submit', async e => {
-    e.preventDefault();
-    const err = $('#formError');
-    let bad = null;
-    $$('.field', form).forEach(f => f.classList.remove('is-invalid'));
-    const mark = name => { form.elements[name].closest('.field').classList.add('is-invalid'); bad = bad || form.elements[name]; };
-
-    if (form.elements.name.value.trim().length < 2) mark('name');
-    if (phone.value.replace(/\D/g, '').length !== 11) mark('phone');
-    if (!form.elements.city.value.trim()) mark('city');
-
-    if (bad) { err.textContent = 'Проверьте выделенные поля'; err.hidden = false; bad.focus(); return; }
-    if (!form.elements.agree.checked) { err.textContent = 'Нужно согласие на обработку данных'; err.hidden = false; return; }
-    err.hidden = true;
-
-    const payload = {
-      name: form.elements.name.value.trim(),
-      phone: phone.value,
-      telegram: form.elements.telegram.value.trim(),
-      city: form.elements.city.value.trim(),
-      comment: form.elements.comment.value.trim(),
-      items: orderItems.map(i => ({ ...i, name: findProduct(i.id).name, price: findProduct(i.id).price })),
-      total: cartSum(orderItems),
-      freeShipping: cartCount(orderItems) >= CONFIG.freeShippingFrom,
-      createdAt: new Date().toISOString(),
-    };
-
-    const submit = $('button[type=submit]', form);
-    submit.disabled = true; submit.textContent = 'Отправляем…';
-    try {
-      await sendOrder(payload);
-      form.hidden = true;
-      $('#formDone').hidden = false;
-      form.reset();
-      if (orderFromCart) { cart = []; saveCart(); }
-    } catch {
-      err.textContent = 'Не получилось отправить. Попробуйте ещё раз или напишите нам в Telegram.';
-      err.hidden = false;
-    } finally {
-      submit.disabled = false; submit.textContent = 'Отправить заявку';
-    }
-  });
+  loadCheckout()
+    .then(() => window.CoulairCheckout.open(items, fromCart))
+    .catch(() => toast('Не удалось открыть оформление, проверьте интернет'));
 }
 
 /* =====================================================================
@@ -736,90 +671,6 @@ function initSpecsAccordion() {
       }
     });
   });
-}
-
-/* =====================================================================
-   Город доставки: подсказки из списка всех городов России
-   (assets/data/cities-ru.json, источник — hflabs/city, CC BY-SA 4.0)
-   ===================================================================== */
-function initCitySuggest() {
-  const input = document.querySelector('#orderForm [name="city"]');
-  const list = $('#citySuggest');
-  if (!input || !list) return;
-  let cities = null, loading = null, items = [], active = -1;
-  const norm = t => t.toLowerCase().replace(/ё/g, 'е').replace(/[‐-―-]/g, '-').trim();
-  const load = () => loading || (loading = fetch(new URL('assets/data/cities-ru.json', document.baseURI))
-    .then(r => r.json())
-    .then(d => { cities = d.cities.map(([name, region, pop]) => ({ name, region, pop, key: norm(name) })); })
-    .catch(() => { loading = null; }));
-  const label = c => c.region ? `${c.name}, ${c.region}` : c.name;
-
-  // разговорные сокращения
-  const ALIAS = { спб: 'санкт-петербург', питер: 'санкт-петербург', мск: 'москва', екб: 'екатеринбург', нск: 'новосибирск', нн: 'нижний новгород', ннов: 'нижний новгород', крд: 'краснодар', влг: 'волгоград' };
-  function search(q) {
-    q = norm(q);
-    if (!q || !cities) return [];
-    if (ALIAS[q]) q = ALIAS[q];
-    const starts = [], words = [], inside = [];
-    for (const c of cities) {                                  // уже отсортированы по населению
-      if (c.key.startsWith(q)) starts.push(c);
-      else if (c.key.split(/[\s-]/).some(w => w.startsWith(q))) words.push(c);
-      else if (q.length >= 3 && c.key.includes(q)) inside.push(c);
-      if (starts.length >= 8) break;
-    }
-    return [...starts, ...words, ...inside].slice(0, 8);
-  }
-  function mark(name, q) {
-    const i = norm(name).indexOf(norm(q));
-    if (i < 0 || !q) return escapeHtml(name);
-    return escapeHtml(name.slice(0, i)) + '<mark>' + escapeHtml(name.slice(i, i + q.trim().length)) + '</mark>' + escapeHtml(name.slice(i + q.trim().length));
-  }
-  function open(show) {
-    list.hidden = !show;
-    input.setAttribute('aria-expanded', String(show));
-  }
-  function render() {
-    const q = input.value;
-    items = search(q);
-    active = items.length ? 0 : -1;
-    if (!q.trim()) { open(false); return; }
-    if (!cities) { list.innerHTML = '<li class="suggest__empty">Загружаем список городов…</li>'; open(true); return; }
-    list.innerHTML = items.length
-      ? items.map((c, i) => `<li class="suggest__item" role="option" id="city-opt-${i}" data-i="${i}" aria-selected="${i === active}">
-          <span>${mark(c.name, q)}</span><span class="suggest__region">${escapeHtml(c.region)}</span></li>`).join('')
-      : '<li class="suggest__empty">Такого города нет в списке — напишите как есть, уточним при звонке</li>';
-    open(true);
-    input.setAttribute('aria-activedescendant', active >= 0 ? `city-opt-${active}` : '');
-  }
-  function highlight(i) {
-    active = (i + items.length) % items.length;
-    $$('.suggest__item', list).forEach((li, k) => li.setAttribute('aria-selected', String(k === active)));
-    const li = $(`#city-opt-${active}`); if (li) li.scrollIntoView({ block: 'nearest' });
-    input.setAttribute('aria-activedescendant', `city-opt-${active}`);
-  }
-  function choose(i) {
-    const c = items[i];
-    if (!c) return;
-    input.value = label(c);
-    input.closest('.field').classList.remove('is-invalid');
-    open(false);
-  }
-
-  input.addEventListener('focus', () => { load().then(() => { if (document.activeElement === input && input.value) render(); }); });
-  input.addEventListener('input', () => { if (!cities) load().then(render); render(); });
-  input.addEventListener('keydown', e => {
-    if (list.hidden || !items.length) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); highlight(active + 1); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); highlight(active - 1); }
-    else if (e.key === 'Enter') { e.preventDefault(); choose(active); }
-    else if (e.key === 'Escape') { e.stopPropagation(); open(false); }
-  });
-  // mousedown, а не click: иначе поле теряет фокус раньше, чем сработает выбор
-  list.addEventListener('mousedown', e => {
-    const li = e.target.closest('.suggest__item');
-    if (li) { e.preventDefault(); choose(Number(li.dataset.i)); }
-  });
-  input.addEventListener('blur', () => setTimeout(() => open(false), 120));
 }
 
 /* =====================================================================
@@ -1113,8 +964,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initCatalog();
   initCatalogPage();
   initProductPage();
-  initOrderForm();
-  initCitySuggest();
   initSpecsAccordion();
   initSearch();
   initSocials();

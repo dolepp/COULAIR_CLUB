@@ -1,0 +1,20 @@
+[Unit]
+Description=Coulair API: СДЭК, ЮKassa, письма и заявки в Telegram
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=coulair
+Group=coulair
+WorkingDirectory=/opt/coulair-api
+ExecStart=/usr/bin/node --env-file=/opt/coulair-api/.env server.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/coulair-api
+
+[Install]
+WantedBy=multi-user.target

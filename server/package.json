@@ -1,0 +1,13 @@
+{
+  "name": "coulair-api",
+  "private": true,
+  "type": "module",
+  "description": "Coulair Club: расчёт СДЭК, оплата ЮKassa, письма и заявки в Telegram",
+  "scripts": {
+    "start": "node --env-file=.env server.js"
+  },
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "nodemailer": "^6.9.16"
+  }
+}

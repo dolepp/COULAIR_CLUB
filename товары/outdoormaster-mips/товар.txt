@@ -9,6 +9,7 @@
 в наличии: 1
 бейдж: Новый
 авито: нет
+ссылка авито: https://www.avito.ru/nizhniy_tagil/sport_i_otdyh/gornolyzhnyy_shlem_outdoormaster_mips_8279481890
 скрыть: нет
 # первым в каталоге
 порядок: 1
