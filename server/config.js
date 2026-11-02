@@ -74,6 +74,7 @@ export const config = {
     token: env.TG_BOT_TOKEN || '',
     // Можно несколько через запятую: личка, группа
     chatIds: (env.TG_CHAT_ID || '').split(',').map(s => s.trim()).filter(Boolean),
+    apiBase: (env.TG_API_BASE || 'https://lainos.ru/telegram-proxy').replace(/\/+$/, ''),
   },
 
   // Поддержка — кнопка в письме клиенту

@@ -8,7 +8,7 @@ import { config } from './config.js';
 import { normalizeItems, buildPackages, BadRequest } from './products.js';
 import { suggestCities, deliveryPoints, quote, cdekMode } from './cdek.js';
 import { createPayment, getPayment, yookassaReady } from './yookassa.js';
-import { createOrder, getOrder, saveOrder } from './store.js';
+import { createOrder, getOrder, saveOrder, listUnnotifiedOrders } from './store.js';
 import { telegramText, sendTelegram, sendOrderEmail } from './notify.js';
 
 // Только для локальной проверки: заказ считается оплаченным без ЮKassa. На сервере не включать!
@@ -96,7 +96,20 @@ async function applyPayment(order, payment) {
   busy.add(order.id);
   try {
     order = getOrder(order.id) || order;            // свежая версия с диска
-    if (order.status === 'paid') return order;
+    if (order.status === 'paid') {
+      if (!order.notified || !order.notified.telegram) {
+        try {
+          order.notified = order.notified || {};
+          order.notified.telegram = await sendTelegram(telegramText(order));
+          delete order.notified.telegramError;
+          saveOrder(order);
+        } catch (e) {
+          order.notified.telegramError = e.message;
+          saveOrder(order);
+        }
+      }
+      return order;
+    }
     order.payment = { ...order.payment, id: payment.id, status: payment.status };
 
     if (payment.status === 'succeeded') {
@@ -281,3 +294,26 @@ const server = http.createServer(async (req, res) => {
 server.listen(config.port, '127.0.0.1', () => {
   console.info(`coulair-api :${config.port} · СДЭК ${cdekMode} · ЮKassa ${yookassaReady() ? 'on' : 'нет ключей'}${FAKE_PAYMENT ? ' · ТЕСТОВАЯ ОПЛАТА' : ''}`);
 });
+
+// Периодическая проверка и повторная отправка заказов, уведомление по которым не дошло в Telegram
+setInterval(async () => {
+  const unnotified = listUnnotifiedOrders();
+  for (const o of unnotified) {
+    if (busy.has(o.id)) continue;
+    busy.add(o.id);
+    try {
+      console.info('[retry-notify] повтор отправки в Telegram для заказа', o.id);
+      o.notified = o.notified || {};
+      o.notified.telegram = await sendTelegram(telegramText(o));
+      delete o.notified.telegramError;
+      saveOrder(o);
+      console.info('[retry-notify] заказ', o.id, 'успешно доставлен в Telegram');
+    } catch (e) {
+      console.error('[retry-notify] ошибка отправки заказа', o.id, e.message);
+      o.notified.telegramError = e.message;
+      saveOrder(o);
+    } finally {
+      busy.delete(o.id);
+    }
+  }
+}, 60_000).unref();

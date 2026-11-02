@@ -45,3 +45,21 @@ export function saveOrder(order) {
 export function getOrder(id) {
   try { return JSON.parse(fs.readFileSync(fileOf(id), 'utf8')); } catch { return null; }
 }
+
+export function listUnnotifiedOrders() {
+  try {
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+    const result = [];
+    for (const f of files) {
+      try {
+        const o = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+        if (o.status === 'paid' && (!o.notified || !o.notified.telegram)) {
+          result.push(o);
+        }
+      } catch {}
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}

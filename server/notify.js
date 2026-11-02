@@ -41,17 +41,53 @@ export function telegramText(o) {
   return lines.filter(l => l !== '').join('\n').replace(/\n(<b>)/g, '\n\n$1').slice(0, 4000);
 }
 
-export async function sendTelegram(text) {
-  const { token, chatIds } = config.telegram;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+export async function sendTelegram(text, maxRetries = 3) {
+  const { token, chatIds, apiBase } = config.telegram;
   if (!token || !chatIds.length) { console.info('[telegram] не настроен, сообщение:\n' + text); return false; }
+
+  const endpoints = [apiBase];
+  if (apiBase !== 'https://api.telegram.org') {
+    endpoints.push('https://api.telegram.org');
+  } else {
+    endpoints.push('https://lainos.ru/telegram-proxy');
+  }
+
   for (const chat_id of chatIds) {
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id, text, parse_mode: 'HTML', disable_web_page_preview: true }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) throw new Error('Telegram: ' + res.status + ' ' + (await res.text()).slice(0, 200));
+    let sent = false;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      for (const base of endpoints) {
+        try {
+          const url = `${base.replace(/\/+$/, '')}/bot${token}/sendMessage`;
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id, text, parse_mode: 'HTML', disable_web_page_preview: true }),
+            signal: AbortSignal.timeout(15000),
+          });
+          if (!res.ok) {
+            const errBody = await res.text().catch(() => '');
+            throw new Error(`HTTP ${res.status}: ${errBody.slice(0, 150)}`);
+          }
+          sent = true;
+          break;
+        } catch (err) {
+          lastError = err;
+          console.warn(`[telegram] попытка ${attempt} через ${base} для чата ${chat_id} не удалась: ${err.message}`);
+        }
+      }
+      if (sent) break;
+      if (attempt < maxRetries) {
+        await sleep(attempt * 2000);
+      }
+    }
+
+    if (!sent) {
+      throw new Error(`Telegram error after ${maxRetries} attempts: ${lastError?.message || 'unknown error'}`);
+    }
   }
   return true;
 }
