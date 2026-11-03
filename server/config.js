@@ -75,6 +75,11 @@ export const config = {
     url: (env.EMAIL_API_URL || '').replace(/\/+$/, ''),
     key: env.EMAIL_API_KEY || '',
   },
+  // Запасной email-api на другом сервере: туда уходит письмо, если основной не смог отправить
+  emailApiFallback: {
+    url: (env.EMAIL_API_FALLBACK_URL || '').replace(/\/+$/, ''),
+    key: env.EMAIL_API_FALLBACK_KEY || '',
+  },
   // Кому дублировать заказы письмом (через запятую)
   adminEmails: (env.ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean),
   // Срок отправки предзаказа — в письме клиенту

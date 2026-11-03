@@ -94,27 +94,60 @@ export async function sendTelegram(text, maxRetries = 3) {
 
 /* ---------- Почта ---------- */
 /* Основной путь — email-api (Gmail API) на этом же сервере: EMAIL_API_URL + EMAIL_API_KEY.
-   Запасной — SMTP (SMTP_*), если email-api не настроен.
+   Если он недоступен или не смог отправить — тот же запрос уходит в запасной email-api
+   на другом сервере (EMAIL_API_FALLBACK_URL + EMAIL_API_FALLBACK_KEY).
+   Последний вариант — SMTP (SMTP_*), если email-api не настроен вовсе.
    Ключ идемпотентности (order-<id>-…) не даёт отправить одно письмо дважды при повторах. */
 let transport = null;
 const smtpReady = () => !!(config.mail.host && config.mail.user && config.mail.pass);
-export const mailReady = () => !!(config.emailApi.url && config.emailApi.key) || smtpReady();
+const apiReady = a => !!(a && a.url && a.key);
+export const mailReady = () => apiReady(config.emailApi) || apiReady(config.emailApiFallback) || smtpReady();
 
-async function sendMail({ to, subject, html, text, key }) {
-  if (config.emailApi.url && config.emailApi.key) {
-    const res = await fetch(`${config.emailApi.url}/api/v1/emails/send`, {
+// Ошибки, при которых запасной сервер не поможет: письмо некорректно или Gmail его отверг.
+const FINAL_CODES = new Set(['validation_error', 'idempotency_conflict', 'gmail_rejected']);
+
+async function sendViaApi(api, payload) {
+  let res;
+  try {
+    res = await fetch(`${api.url}/api/v1/emails/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.emailApi.key}` },
-      body: JSON.stringify({ to, subject, html, text, idempotency_key: key }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.key}` },
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(120000),
     });
-    const body = await res.json().catch(() => ({}));
-    // 201 — отправлено, 200 — уже было отправлено раньше (повтор),
-    // 202 — Gmail ответил неоднозначно: письмо могло уйти, повторно не шлём.
-    if (res.status === 201 || res.status === 200) return 'sent';
-    if (res.status === 202) return 'uncertain';
-    const err = body && body.error;
-    throw new Error(`email-api ${res.status}: ${(err && (err.code + ' ' + err.message)) || 'ошибка'}`);
+  } catch (e) {
+    const err = new Error(`email-api ${api.url}: нет ответа (${e.name === 'TimeoutError' ? 'таймаут' : e.message})`);
+    err.retryElsewhere = true;
+    throw err;
+  }
+  const body = await res.json().catch(() => ({}));
+  // 201 — отправлено, 200 — уже было отправлено раньше (повтор),
+  // 202 — Gmail ответил неоднозначно: письмо могло уйти, повторно не шлём.
+  if (res.status === 201 || res.status === 200) return 'sent';
+  if (res.status === 202) return 'uncertain';
+  const e = (body && body.error) || {};
+  const err = new Error(`email-api ${api.url} ${res.status}: ${e.code ? e.code + ' ' + (e.message || '') : 'ошибка'}`);
+  err.retryElsewhere = !FINAL_CODES.has(e.code) && res.status !== 400 && res.status !== 409 && res.status !== 422;
+  throw err;
+}
+
+async function sendMail({ to, subject, html, text, key }) {
+  const payload = { to, subject, html, text, idempotency_key: key };
+  const apis = [config.emailApi, config.emailApiFallback].filter(apiReady);
+  if (apis.length) {
+    let lastErr;
+    for (const [i, api] of apis.entries()) {
+      try {
+        const r = await sendViaApi(api, payload);
+        if (i > 0) console.warn(`[mail] ${key} → ${to}: отправлено через запасной ${api.url} (${r})`);
+        return r;
+      } catch (err) {
+        lastErr = err;
+        console.warn(`[mail] ${key} → ${to}: ${err.message}`);
+        if (!err.retryElsewhere) break;
+      }
+    }
+    throw lastErr;
   }
   if (!smtpReady()) return false;
   transport ||= nodemailer.createTransport({
