@@ -70,6 +70,16 @@ export const config = {
     bcc: env.MAIL_BCC || '',
   },
 
+  // Отправка писем через email-api (Gmail API) на этом же сервере
+  emailApi: {
+    url: (env.EMAIL_API_URL || '').replace(/\/+$/, ''),
+    key: env.EMAIL_API_KEY || '',
+  },
+  // Кому дублировать заказы письмом (через запятую)
+  adminEmails: (env.ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean),
+  // Срок отправки предзаказа — в письме клиенту
+  preorderShipping: env.PREORDER_SHIPPING || '12–16 рабочих дней',
+
   telegram: {
     token: env.TG_BOT_TOKEN || '',
     // Можно несколько через запятую: личка, группа

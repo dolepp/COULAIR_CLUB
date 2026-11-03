@@ -1,7 +1,7 @@
-/* Уведомления об оплаченном заказе: заявка в Telegram и письмо клиенту */
+/* Уведомления об оплаченном заказе: заявка в Telegram, письмо клиенту и письма админам */
 import nodemailer from 'nodemailer';
 import { config } from './config.js';
-import { orderEmail } from './email.js';
+import { orderEmail, adminEmail } from './email.js';
 
 const rub = n => Number(n).toLocaleString('ru-RU') + ' ₽';
 const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -93,21 +93,57 @@ export async function sendTelegram(text, maxRetries = 3) {
 }
 
 /* ---------- Почта ---------- */
+/* Основной путь — email-api (Gmail API) на этом же сервере: EMAIL_API_URL + EMAIL_API_KEY.
+   Запасной — SMTP (SMTP_*), если email-api не настроен.
+   Ключ идемпотентности (order-<id>-…) не даёт отправить одно письмо дважды при повторах. */
 let transport = null;
-const mailReady = () => !!(config.mail.host && config.mail.user && config.mail.pass);
+const smtpReady = () => !!(config.mail.host && config.mail.user && config.mail.pass);
+export const mailReady = () => !!(config.emailApi.url && config.emailApi.key) || smtpReady();
 
-export async function sendOrderEmail(order) {
-  if (!mailReady()) { console.info('[mail] SMTP не настроен — письмо заказу', order.id, 'не отправлено'); return false; }
+async function sendMail({ to, subject, html, text, key }) {
+  if (config.emailApi.url && config.emailApi.key) {
+    const res = await fetch(`${config.emailApi.url}/api/v1/emails/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.emailApi.key}` },
+      body: JSON.stringify({ to, subject, html, text, idempotency_key: key }),
+      signal: AbortSignal.timeout(120000),
+    });
+    const body = await res.json().catch(() => ({}));
+    // 201 — отправлено, 200 — уже было отправлено раньше (повтор),
+    // 202 — Gmail ответил неоднозначно: письмо могло уйти, повторно не шлём.
+    if (res.status === 201 || res.status === 200) return 'sent';
+    if (res.status === 202) return 'uncertain';
+    const err = body && body.error;
+    throw new Error(`email-api ${res.status}: ${(err && (err.code + ' ' + err.message)) || 'ошибка'}`);
+  }
+  if (!smtpReady()) return false;
   transport ||= nodemailer.createTransport({
     host: config.mail.host, port: config.mail.port, secure: config.mail.secure,
     auth: { user: config.mail.user, pass: config.mail.pass },
   });
-  const { subject, html, text } = orderEmail(order);
-  await transport.sendMail({
-    from: { name: config.shopName, address: config.mail.from },
-    to: order.contact.email,
-    bcc: config.mail.bcc || undefined,
-    subject, html, text,
-  });
+  await transport.sendMail({ from: { name: config.shopName, address: config.mail.from }, to, subject, html, text });
+  return 'sent';
+}
+
+/* Письмо клиенту: «Вы оформили предзаказ». */
+export async function sendOrderEmail(order) {
+  if (!mailReady()) { console.info('[mail] почта не настроена — письмо по заказу', order.id, 'не отправлено'); return false; }
+  const r = await sendMail({ to: order.contact.email, ...orderEmail(order), key: `order-${order.id}-client` });
+  console.info('[mail] заказ', order.id, 'письмо клиенту:', r);
+  return !!r;
+}
+
+/* Письма администраторам с данными заказа (как в Telegram). Каждому — отдельное письмо. */
+export async function sendAdminEmails(order) {
+  if (!mailReady() || !config.adminEmails.length) return false;
+  const msg = adminEmail(order);
+  const errors = [];
+  for (const to of config.adminEmails) {
+    try {
+      const r = await sendMail({ to, ...msg, key: `order-${order.id}-admin-${to.toLowerCase()}` });
+      console.info('[mail] заказ', order.id, 'письмо админу', to, r);
+    } catch (e) { errors.push(`${to}: ${e.message}`); }
+  }
+  if (errors.length) throw new Error(errors.join('; '));
   return true;
 }

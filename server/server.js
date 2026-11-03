@@ -8,8 +8,8 @@ import { config } from './config.js';
 import { normalizeItems, buildPackages, BadRequest } from './products.js';
 import { suggestCities, deliveryPoints, quote, cdekMode } from './cdek.js';
 import { createPayment, getPayment, yookassaReady } from './yookassa.js';
-import { createOrder, getOrder, saveOrder, listUnnotifiedOrders } from './store.js';
-import { telegramText, sendTelegram, sendOrderEmail } from './notify.js';
+import { createOrder, getOrder, saveOrder, listUnnotifiedOrders, listOrdersWithMailErrors } from './store.js';
+import { telegramText, sendTelegram, sendOrderEmail, sendAdminEmails } from './notify.js';
 
 // Только для локальной проверки: заказ считается оплаченным без ЮKassa. На сервере не включать!
 const FAKE_PAYMENT = process.env.DEV_FAKE_PAYMENT === '1';
@@ -129,13 +129,8 @@ async function applyPayment(order, payment) {
 
       try { order.notified.telegram = await sendTelegram(telegramText(order)); }
       catch (e) { console.error('[order]', order.id, e.message); order.notified.telegramError = e.message; }
-      try { order.notified.email = await sendOrderEmail(order); }
-      catch (e) {
-        console.error('[order]', order.id, 'письмо:', e.message);
-        order.notified.emailError = e.message;
-        await sendTelegram(`⚠️ Заказ №${order.id}: не удалось отправить письмо клиенту (${e.message}).`).catch(() => {});
-      }
       saveOrder(order);
+      await sendOrderMails(order, true);
     } else if (payment.status === 'canceled') {
       order.status = 'canceled';
       order.cancelReason = payment.cancellation_details && payment.cancellation_details.reason;
@@ -145,6 +140,27 @@ async function applyPayment(order, payment) {
   } finally {
     busy.delete(order.id);
   }
+}
+
+/* Письма клиенту и админам. Ошибка не мешает заказу: повтор — в фоновой проверке ниже. */
+async function sendOrderMails(order, alertOnFail) {
+  order.notified = order.notified || {};
+  if (!order.notified.email) {
+    try { order.notified.email = await sendOrderEmail(order); delete order.notified.emailError; }
+    catch (e) {
+      console.error('[order]', order.id, 'письмо клиенту:', e.message);
+      order.notified.emailError = e.message;
+      if (alertOnFail) await sendTelegram(`⚠️ Заказ №${order.id}: не удалось отправить письмо клиенту (${e.message}). Повторю автоматически.`).catch(() => {});
+    }
+  }
+  if (!order.notified.adminEmail) {
+    try { order.notified.adminEmail = await sendAdminEmails(order); delete order.notified.adminEmailError; }
+    catch (e) {
+      console.error('[order]', order.id, 'письма админам:', e.message);
+      order.notified.adminEmailError = e.message;
+    }
+  }
+  saveOrder(order);
 }
 
 function publicOrder(o) {
@@ -317,3 +333,20 @@ setInterval(async () => {
     }
   }
 }, 60_000).unref();
+
+// Повтор писем, которые не ушли из-за сбоя (только свежие заказы, не старше 3 дней)
+setInterval(async () => {
+  const since = Date.now() - 3 * 864e5;
+  for (const o of listOrdersWithMailErrors()) {
+    if (busy.has(o.id) || !(Date.parse(o.paidAt || o.createdAt) > since)) continue;
+    busy.add(o.id);
+    try {
+      console.info('[retry-mail] повтор писем по заказу', o.id);
+      await sendOrderMails(o, false);
+    } catch (e) {
+      console.error('[retry-mail]', o.id, e.message);
+    } finally {
+      busy.delete(o.id);
+    }
+  }
+}, 5 * 60_000).unref();

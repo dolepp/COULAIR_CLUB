@@ -1,4 +1,4 @@
-/* Письмо клиенту об оплаченном заказе.
+/* Письма об оплаченном заказе: клиенту (предзаказ оформлен) и администраторам.
    Вёрстка таблицами и инлайн-стилями — так письмо одинаково выглядит в Gmail, Яндексе, Mail.ru и Outlook. */
 import { config } from './config.js';
 
@@ -15,7 +15,8 @@ const FONT = "'Manrope','Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 export function orderEmail(o) {
   const site = config.siteUrl;
   const d = o.delivery;
-  const subject = `Заказ №${o.id} оплачен — ${config.shopName}`;
+  const subject = `Предзаказ №${o.id} оформлен — ${config.shopName}`;
+  const ship = config.preorderShipping;
 
   const itemsHtml = o.items.map(i => `
     <tr>
@@ -47,7 +48,7 @@ export function orderEmail(o) {
 <title>${esc(subject)}</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f2ee;">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;">Оплата прошла. Соберём и передадим заказ в СДЭК в ближайшее время.</div>
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">Оплата прошла. Предзаказ оформлен, отправим в СДЭК в течение ${esc(ship)}.</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f2ee;">
   <tr><td align="center" style="padding:28px 12px;">
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;">
@@ -60,8 +61,8 @@ export function orderEmail(o) {
       <!-- приветствие -->
       <tr><td style="padding:36px 36px 8px;background:#ffffff;">
         <p style="margin:0 0 10px;font:700 12px/1 ${FONT};letter-spacing:.14em;text-transform:uppercase;color:${MUTED};">Заказ №${esc(o.id)} · ${dateRu(o.paidAt || o.createdAt)}</p>
-        <h1 style="margin:0 0 14px;font:800 28px/1.2 ${FONT};color:${INK};">Спасибо за заказ!<br>Оплата прошла</h1>
-        <p style="margin:0;font:500 15px/1.6 ${FONT};color:#45433f;">Мы получили оплату и уже собираем заказ. Как только передадим посылку в&nbsp;СДЭК, пришлём номер для отслеживания.</p>
+        <h1 style="margin:0 0 14px;font:800 28px/1.2 ${FONT};color:${INK};">Спасибо!<br>Вы оформили предзаказ</h1>
+        <p style="margin:0;font:500 15px/1.6 ${FONT};color:#45433f;">Мы получили оплату, ваш предзаказ принят. Мы передадим посылку в&nbsp;СДЭК в течение ${esc(ship)} после оплаты и пришлём номер для отслеживания. Если срок изменится, сразу сообщим.</p>
       </td></tr>
 
       <!-- товары -->
@@ -107,7 +108,7 @@ export function orderEmail(o) {
       <!-- подвал -->
       <tr><td align="center" style="padding:22px 24px 6px;font:500 12px/1.6 ${FONT};color:${MUTED};">
         ${esc(config.shopName)} · <a href="${site}" style="color:${MUTED};">${site.replace(/^https?:\/\//, '')}</a> · ${esc(config.seller)}<br>
-        Вы получили это письмо, потому что оформили заказ на сайте.
+        Вы получили это письмо, потому что оформили предзаказ на сайте.
         <a href="${site}/offer/" style="color:${MUTED};">Условия возврата и обмена</a>
       </td></tr>
     </table>
@@ -117,7 +118,7 @@ export function orderEmail(o) {
 </html>`;
 
   const text = [
-    `Спасибо! Заказ №${o.id} оплачен.`,
+    `Спасибо! Вы оформили предзаказ №${o.id}, оплата прошла.`,
     '',
     ...o.items.map(i => `— ${i.name}${i.size ? ', размер ' + i.size : ''} × ${i.qty}: ${rubText(i.price * i.qty)}`),
     '',
@@ -129,9 +130,56 @@ export function orderEmail(o) {
     d.point.workTime ? `Режим работы: ${d.point.workTime}` : '',
     `Получатель: ${o.contact.name}, ${o.contact.phone}`,
     '',
-    'Как только передадим посылку в СДЭК, пришлём номер для отслеживания.',
+    `Передадим посылку в СДЭК в течение ${ship} после оплаты и пришлём номер для отслеживания.`,
     `Вопросы: ${config.contactTelegram}`,
   ].filter(l => l !== null).join('\n');
 
+  return { subject, html, text };
+}
+
+/* ---------- письмо администраторам: те же данные, что в Telegram ---------- */
+const TYPE_ADMIN = { PVZ: 'Пункт выдачи', POSTAMAT: 'Постамат' };
+
+export function adminEmail(o) {
+  const d = o.delivery;
+  const c = o.contact;
+  const tg = c.telegram ? c.telegram.replace(/^(?=[A-Za-z])/, '@') : (c.noTelegram ? 'нет' : '—');
+  const subject = `Новый заказ №${o.id} — ${rubText(o.total)} — ${c.name}`;
+  const pkgs = (o.packages || []).map((p, k) => `${k + 1}) ${p.name} ${p.length}×${p.width}×${p.height} см, ${(p.weight / 1000).toFixed(2)} кг — ${p.contents}`);
+  const lines = [
+    ['Сумма оплаты', rubText(o.total)],
+    ['Товары / доставка', `${rubText(o.goods)} / ${d.customerCost ? rubText(d.customerCost) : 'бесплатно'}`],
+    ['ФИО', c.name], ['Телефон', c.phone], ['Email', c.email], ['Telegram', tg],
+    ['Доставка', `СДЭК — ${TYPE_ADMIN[d.point.type] || d.point.type}`],
+    ['Город', `${d.cityName} (код ${d.cityCode})`],
+    ['Пункт', d.point.code], ['Адрес', d.point.address],
+    ['Тариф', `${d.tariff}${d.daysMin ? ` · срок ${days(d)}` : ''}`],
+    [d.fixed ? 'Доставка по фикс. цене' : 'Стоимость по СДЭК', `${rubText(d.cdekCost)}${d.free ? ' (клиенту бесплатно — акция)' : ''}`],
+    ['ЮKassa', o.payment && o.payment.id],
+  ];
+  const cell = 'padding:6px 10px;border-bottom:1px solid #e4e1dc;font:14px/1.45 Arial,sans-serif;vertical-align:top;';
+  const html = `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>${esc(subject)}</title></head>
+<body style="margin:0;padding:16px;background:#ffffff;color:#0e0e10;">
+<h2 style="margin:0 0 12px;font:700 20px/1.3 Arial,sans-serif;">🧾 Оплачен заказ №${esc(o.id)}</h2>
+<p style="margin:0 0 6px;font:700 15px Arial,sans-serif;">Товары</p>
+<ul style="margin:0 0 14px;padding-left:20px;font:14px/1.5 Arial,sans-serif;">
+${o.items.map(i => `<li>${esc(i.name)}${i.size ? ', ' + esc(i.size) : ''} × ${i.qty} — ${esc(rubText(i.price * i.qty))}</li>`).join('\n')}
+</ul>
+<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;max-width:640px;width:100%;">
+${lines.map(([k, v]) => `<tr><td style="${cell}color:#6d6b68;white-space:nowrap;">${esc(k)}</td><td style="${cell}">${esc(v)}</td></tr>`).join('\n')}
+</table>
+${pkgs.length ? `<p style="margin:14px 0 6px;font:700 15px Arial,sans-serif;">Места</p><p style="margin:0;font:14px/1.5 Arial,sans-serif;">${pkgs.map(esc).join('<br>')}</p>` : ''}
+${o.comment ? `<p style="margin:14px 0 0;font:14px/1.5 Arial,sans-serif;">💬 <b>Комментарий:</b> ${esc(o.comment)}</p>` : ''}
+</body></html>`;
+  const text = [
+    `Оплачен заказ №${o.id}`,
+    '',
+    'Товары:',
+    ...o.items.map(i => `• ${i.name}${i.size ? ', ' + i.size : ''} × ${i.qty} — ${rubText(i.price * i.qty)}`),
+    '',
+    ...lines.map(([k, v]) => `${k}: ${v ?? ''}`),
+    ...(pkgs.length ? ['', 'Места:', ...pkgs] : []),
+    ...(o.comment ? ['', `Комментарий: ${o.comment}`] : []),
+  ].join('\n');
   return { subject, html, text };
 }

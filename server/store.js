@@ -63,3 +63,14 @@ export function listUnnotifiedOrders() {
     return [];
   }
 }
+
+/* Оплаченные заказы, по которым письмо не ушло из-за ошибки */
+export function listOrdersWithMailErrors() {
+  try {
+    return fs.readdirSync(dir).filter(f => f.endsWith('.json')).map(f => {
+      try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { return null; }
+    }).filter(o => o && o.status === 'paid' && o.notified && (o.notified.emailError || o.notified.adminEmailError));
+  } catch {
+    return [];
+  }
+}
