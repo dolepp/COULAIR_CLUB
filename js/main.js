@@ -294,7 +294,7 @@ function cardHtml(p) {
   const inCart = cart.some(i => i.id === p.id);
   const photo = !!(p.images && p.images.length);
   const img2 = photo && p.images[1] ? `<img class="card__img2" src="${p.images[1]}" alt="" loading="lazy">` : '';
-  const sale = p.oldPrice ? `<span class="card__sale">−${Math.round((1 - p.price / p.oldPrice) * 100)}%</span>` : '';
+  const sale = p.oldPrice && p.price ? `<span class="card__sale">−${Math.round((1 - p.price / p.oldPrice) * 100)}%</span>` : '';
   const badge = p.sold ? '<span class="card__badge card__badge--sold">Продано</span>'
     : p.badge ? `<span class="card__badge">${escapeHtml(p.badge)}</span>` : '';
   const add = p.sold ? '' : p.avito ? `
@@ -313,7 +313,7 @@ function cardHtml(p) {
         </div>
         <div class="card__body">
           <h3 class="card__name">${escapeHtml(p.name)}</h3>
-          <p class="card__price">${rub(p.price)}${p.oldPrice ? `<s>${rub(p.oldPrice)}</s>` : ''}${p.size ? `<span class="card__size">${escapeHtml(p.size)}</span>` : ''}</p>
+          <p class="card__price">${p.price ? rub(p.price) : ''}${p.oldPrice && p.price ? `<s>${rub(p.oldPrice)}</s>` : ''}${p.size ? `<span class="card__size">${escapeHtml(p.size)}</span>` : ''}</p>
         </div>
       </a>${add}
     </article>`;
@@ -687,7 +687,7 @@ function initSearch() {
     results.innerHTML = found.length
       ? found.map(p => `<li><button class="search__result" data-go="${p.id}">
           <img src="${imgOf(p)}" alt="" onerror="this.onerror=null;this.src='${PLACEHOLDERS[p.type]}'">
-          <span>${escapeHtml(p.name)}</span><small>${rub(p.price)}</small></button></li>`).join('')
+          <span>${escapeHtml(p.name)}</span><small>${p.price ? rub(p.price) : ''}</small></button></li>`).join('')
       : '<li class="search__none">Ничего не нашли — напишите нам, подберём</li>';
   };
   input.addEventListener('input', render);

@@ -185,8 +185,8 @@ def parse_product(folder: Path):
         return None
     if not meta.get('название'):
         raise ProductError(f'{where}: не заполнено «название»')
-    if to_int(meta.get('цена')) is None:
-        raise ProductError(f'{where}: не заполнена «цена» (только число, например 5390)')
+    if to_int(meta.get('цена')) is None and not meta.get('ссылка авито'):
+        raise ProductError(f'{where}: не заполнена «цена» (только число, например 5390; без цены можно только с «ссылка авито»)')
     type_ = TYPES.get(meta.get('тип', '').lower())
     if not type_:
         raise ProductError(f'{where}: «тип» должен быть одним из: шлем, ботинки, штаны, аксессуары')
@@ -281,7 +281,7 @@ def product_main(p):
     features = ''.join(f'<li>{esc(f)}</li>' for f in p['features'])
     desc = ''.join(f'<p>{esc(t)}</p>' for t in p['description'])
     old = (f'<s class="price__old">{rub(p["oldPrice"])}</s>'
-           f'<span class="price__tag">−{round((1 - p["price"] / p["oldPrice"]) * 100)}%</span>') if p['oldPrice'] else ''
+           f'<span class="price__tag">−{round((1 - p["price"] / p["oldPrice"]) * 100)}%</span>') if p['oldPrice'] and p['price'] else ''
     specs = [('Бренд', p['brand']), ('Размер', p['size']), ('Состояние', p['condition']),
              ('Категория', TYPE_LABELS.get(p['type'], ''))]
     specs_html = ''.join(f'<div class="specs__row"><dt>{k}</dt><dd>{esc(v)}</dd></div>' for k, v in specs if v)
@@ -316,7 +316,7 @@ def product_main(p):
 
         <div class="pdp__info cs">
           <div class="cs__head">
-            <p class="cs__price"><span>{rub(p['price'])}</span>{f' <s>{rub(p["oldPrice"])}</s>' if p['oldPrice'] else ''}</p>
+            {f'<p class="cs__price"><span>{rub(p["price"])}</span>' + (f' <s>{rub(p["oldPrice"])}</s>' if p['oldPrice'] else '') + '</p>' if p['price'] else ''}
             {f'<p class="cs__sizes">Размер <span>{esc(p["size"])}</span></p>' if p['size'] else ''}
           </div>
           <h1 class="cs__name">{esc(p['name'])}</h1>
@@ -377,14 +377,14 @@ def product_head(p):
         'name': p['name'], 'image': [SITE_URL + i for i in p['images']],
         'description': ' '.join(p['description'])[:500],
         'brand': {'@type': 'Brand', 'name': p['brand'].split('·')[0].strip()} if p['brand'] else None,
-        'offers': {'@type': 'Offer', 'priceCurrency': 'RUB', 'price': p['price'],
+        'offers': {**({'priceCurrency': 'RUB', 'price': p['price']} if p['price'] else {}), '@type': 'Offer',
                    'availability': 'https://schema.org/SoldOut' if p['sold'] else 'https://schema.org/InStock',
                    'itemCondition': 'https://schema.org/UsedCondition' if 'б/у' in p['badge'].lower() else 'https://schema.org/NewCondition',
                    'url': SITE_URL + p['url']},
     }
     ld = {k: v for k, v in ld.items() if v}
     return (f'  <meta property="og:type" content="product">\n'
-            f'  <meta property="og:title" content="{esc(p["name"])} — {rub(p["price"])}">\n'
+            f'  <meta property="og:title" content="{esc(p["name"])}{' — ' + rub(p["price"]) if p["price"] else ''}">\n'
             f'  <meta property="og:image" content="{SITE_URL}{p["images"][0]}">\n'
             f'  <script type="application/ld+json">{json.dumps(ld, ensure_ascii=False)}</script>\n')
 
@@ -446,10 +446,10 @@ def main():
 
     for p in products:
         (CATALOG / p['id'] / 'index.html').write_text(page(
-            head, top, bottom, base='../../', title=f'{p["name"]} — {rub(p["price"])} · Coulair Club',
+            head, top, bottom, base='../../', title=f'{p["name"]}{" — " + rub(p["price"]) if p["price"] else ""} · Coulair Club',
             description=(p['description'][0] if p['description'] else p['name'])[:160],
             main=product_main(p), extra_head=product_head(p)), encoding='utf-8')
-        status = 'продано' if p['sold'] else rub(p['price'])
+        status = 'продано' if p['sold'] else rub(p['price']) if p['price'] else 'без цены'
         print(f'  ✓ {p["name"]} — {status}, фото: {len(p["images"])}  →  catalog/{p["id"]}/')
     print(f'Готово: товаров {len(products)}')
 
