@@ -79,11 +79,10 @@
           <p class="order-card__lead">Оплата получена, но нам нужно проверить детали. Мы свяжемся с вами в ближайшее время.</p>
           <a class="btn btn--dark btn--wide" href="https://t.me/coulair" target="_blank" rel="noopener">Написать в Telegram</a>`;
       } else {
-        body.innerHTML = `${ICON.fail}<h1>Оплата не прошла</h1>
-          <p class="order-card__lead">Деньги не списаны. Корзина сохранена — можно оформить заказ ещё раз
-          или написать нам в Telegram, поможем.</p>
-          <a class="btn btn--dark btn--wide" href="./">Вернуться к корзине</a>
-          <a class="btn btn--ghost btn--wide" href="https://t.me/coulair" target="_blank" rel="noopener">Написать в Telegram</a>`;
+        body.innerHTML = `${ICON.fail}<h1>Ошибка платежа</h1>
+          <p class="order-card__lead">Деньги не списаны. Напишите администратору в Telegram: <a href="https://t.me/coulair" target="_blank" rel="noopener">@coulair</a> — поможем оформить заказ.</p>
+          <a class="btn btn--dark btn--wide" href="https://t.me/coulair" target="_blank" rel="noopener">Написать администратору в Telegram</a>
+          <a class="btn btn--ghost btn--wide" href="./">Вернуться в магазин</a>`;
       }
     }
 

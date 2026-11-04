@@ -29,6 +29,7 @@
     if (!res.ok) {
       const e = new Error(data.error || 'Нет связи с сервером, попробуйте ещё раз');
       e.fields = data.fields;
+      e.support = data.support;
       throw e;
     }
     return data;
@@ -431,7 +432,15 @@
   }
 
   function hint(text) { const h = $('#coHint'); h.textContent = text; h.hidden = !text; }
-  function showError(text) { const e = $('#coError'); e.textContent = text; e.hidden = !text; }
+  function showError(text, support) {
+    const e = $('#coError'); e.textContent = text || ''; e.hidden = !text;
+    if (text && support && /^https:\/\/t\.me\//.test(support)) {
+      const a = document.createElement('a');
+      a.className = 'btn btn--dark btn--wide form__support'; a.href = support; a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = 'Написать администратору в Telegram';
+      e.append(document.createElement('br'), a);
+    }
+  }
 
   const CONTACT_FIELDS = ['name', 'phone', 'email', 'telegram'];
   // @username, ссылка t.me/… или номер телефона, к которому привязан Telegram
@@ -494,7 +503,7 @@
         location.href = res.paymentUrl;
       } catch (err) {
         if (err.fields) Object.keys(err.fields).forEach(n => f.elements[n] && mark(n));
-        showError(err.fields ? Object.values(err.fields)[0] : err.message);
+        showError(err.fields ? Object.values(err.fields)[0] : err.message, err.support);
         btn.disabled = false;
         renderTotal();
       }

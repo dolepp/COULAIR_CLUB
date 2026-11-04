@@ -248,7 +248,8 @@ const routes = {
     } catch (e) {
       order.status = 'error'; order.error = e.message; saveOrder(order);
       console.error('[order]', order.id, e.message);
-      return [502, { error: 'Не удалось создать платёж. Попробуйте ещё раз или напишите нам в Telegram.' }];
+      const tg = config.contactTelegram, handle = '@' + tg.replace(/^.*t\.me\//, '');
+      return [502, { error: `Ошибка платежа. Напишите администратору в Telegram: ${handle}`, support: tg }];
     }
   },
 
