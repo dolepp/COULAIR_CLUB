@@ -703,6 +703,10 @@ impl App {
 #[tokio::main]
 async fn main() -> Result<()> {
     load_dotenv();
+    let check = std::env::args().any(|a| a == "--check");
+    if check && std::env::var("BOT_TOKEN").is_err() {
+        std::env::set_var("BOT_TOKEN", "check");
+    }
     let cfg = Cfg::from_env()?;
     let tg = reqwest::Client::builder().timeout(Duration::from_secs(70)).build()?;
     let mut web = reqwest::Client::builder()
@@ -721,6 +725,16 @@ async fn main() -> Result<()> {
         photos: Mutex::new(HashMap::new()),
     });
 
+    if check {
+        // без Telegram: показать, что бот достал с сайта и из канала
+        let d = app.site().await;
+        for p in &d.products {
+            println!("=== {} ({} фото) {:?}\n{}\n", p.id, p.images.len(), app.card_kb(p)["inline_keyboard"].as_array().map(|a| a.len()), App::card_text(p));
+        }
+        let post = app.spec_post().await;
+        println!("=== пост: {:?}\n=== specs {:?}\n=== sizes {:?}\n{:?}\n{}", post.map(|p| p.link), d.specs, d.size_headers, d.size_rows, d.size_note);
+        return Ok(());
+    }
     let me = app.call("getMe", json!({})).await?;
     eprintln!("coulair-bot @{} запущен", me["username"].as_str().unwrap_or("?"));
     app.setup().await;
