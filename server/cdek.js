@@ -12,7 +12,7 @@ const API = live
   ? { base: 'https://api.cdek.ru/v2', account: config.cdek.account, secure: config.cdek.secure }
   : TEST;
 const calc = config.cdek.calc || (live ? 'api' : 'table');
-export const cdekMode = (live ? 'live' : 'test') + (calc === 'table' ? ' · таблица' : '');
+export const cdekMode = (live ? 'live' : 'test') + (calc === 'table' ? ' · таблица' : calc === 'lk' ? ' · калькулятор cdek.ru' : '');
 
 let token = null, tokenUntil = 0;
 async function auth() {
@@ -182,10 +182,116 @@ async function tableTariffs(cityCode, packages) {
   return out;
 }
 
+/* ---------- калькулятор личного кабинета СДЭК (my.cdek.ru) — те же цены, что на cdek.ru ----------
+ * Отправка: сдаём в пункт СДЭК в городе CDEK_FROM_CITY_CODE (Нижний Тагил), до ПВЗ или постамата.
+ * Посылки, которые влезают в фирменный пакет А3 (42×35×5), считаются пакетом А3 + цена самого пакета. */
+const LK = 'https://my.cdek.ru';
+const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
+const A3 = { length: 42, width: 35, height: 5, maxKg: 3, service: 'courierPackageА3' }; // «А» кириллицей, как у СДЭК
+// cookie антибота (spid, spsc…) обновляются в ответах — храним как браузер
+const jar = new Map();
+let jarUntil = 0;
+const keepCookies = res => {
+  for (const c of res.headers.getSetCookie?.() || []) {
+    const [pair] = c.split(';'), i = pair.indexOf('=');
+    if (i > 0) jar.set(pair.slice(0, i).trim(), pair.slice(i + 1).trim());
+  }
+};
+const cookieHeader = () => [...jar].map(([k, v]) => k + '=' + v).join('; ');
+
+async function lkSession(fresh) {
+  if (!fresh && jar.size && Date.now() < jarUntil) return cookieHeader();
+  if (fresh) jar.clear();
+  const res = await fetch(LK + '/lkfl/calculate/', {
+    headers: { 'User-Agent': UA, ...(jar.size ? { Cookie: cookieHeader() } : {}) }, signal: AbortSignal.timeout(15000),
+  });
+  await res.arrayBuffer();
+  keepCookies(res);
+  jarUntil = Date.now() + 20 * 60e3;
+  return cookieHeader();
+}
+
+// запросы к СДЭК по одному: параллельные антибот принимает за робота
+let lkQueue = Promise.resolve();
+const serial = fn => { const p = lkQueue.then(fn, fn); lkQueue = p.catch(() => {}); return p; };
+
+const lk = (path, body) => serial(() => lkRaw(path, body));
+async function lkRaw(path, body) {
+  const send = async fresh => fetch(LK + path, {
+    method: body ? 'POST' : 'GET',
+    headers: {
+      'User-Agent': UA, Accept: 'application/json, text/plain, */*', 'Accept-Language': 'ru-RU', 'X-Site-Code': 'ru',
+      Origin: LK, Referer: LK + '/lkfl/calculate/', 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty',
+      Cookie: await lkSession(fresh), ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(20000),
+  });
+  const parse = async res => { keepCookies(res); const t = await res.text(); try { return JSON.parse(t); } catch { return null; } };
+  let res = await send(false), data = await parse(res);
+  if (res.status === 403 || !data) { res = await send(true); data = await parse(res); }   // протухла cookie антибота
+  if (!res.ok || !data) {
+    const msg = data && data.errors ? data.errors.map(e => e.message).join('; ') : 'HTTP ' + res.status;
+    throw new Error('калькулятор СДЭК: ' + msg);
+  }
+  return data;
+}
+
+const cityUuid = code => cached('uuid:' + code, 7 * 24 * 3600e3, async () => {
+  const d = await lk('/api/geo/cities?codes=' + Number(code));
+  const c = d && d[String(code)];
+  if (!c || !c.cityUuid) throw new Error('калькулятор СДЭК: нет города ' + code);
+  return c.cityUuid;
+});
+
+const fitsA3 = p => {
+  const [a, b, c] = [p.length, p.width, p.height].sort((x, y) => y - x);
+  return a <= A3.length && b <= A3.width && c <= A3.height && p.weight / 1000 <= A3.maxKg;
+};
+
+async function lkTariffs(cityCode, packages) {
+  const [from, to] = await Promise.all([cityUuid(config.cdek.fromCityCode), cityUuid(cityCode)]);
+  let a3 = 0;
+  const places = packages.map((p, i) => {
+    const kg = Math.max(0.1, Math.round(p.weight) / 1000);
+    if (fitsA3(p)) { a3++; return { id: i + 1, length: A3.length, width: A3.width, height: A3.height, weight: kg }; }
+    return { id: i + 1, length: p.length, width: p.width, height: p.height, weight: kg };
+  });
+  const extra = a3 ? { additionalServices: [{ alias: A3.service, params: [{ name: 'count', value: a3 }] }] } : {};
+  const out = {};
+  await Promise.all([['PVZ', 'OFFICE-OFFICE'], ['POSTAMAT', 'OFFICE-POSTAMAT']].map(async ([type, mode]) => {
+    const d = await lk('/api/lkfl/v2/calculator/getTariffList', {
+      mode, packages: places, sender: { cityId: from }, receiver: { cityId: to }, ...extra,
+    });
+    // тариф CDEK_LK_TARIFF (FAST — им Артём и отправляет), если его нет — самый дешёвый
+    const list = (d.data || []).filter(t => t.tariff && t.tariff.totalCost);
+    const best = (list.find(t => t.alias === config.cdek.lkTariff)
+      || list.sort((a, b) => a.tariff.totalCost.amount - b.tariff.totalCost.amount)[0] || {}).tariff;
+    out[type] = best ? {
+      tariff: config.cdek.tariffs[type],
+      cost: Math.ceil(best.totalCost.amount + config.cdek.markup),
+      daysMin: best.deliveryPeriodMin, daysMax: best.deliveryPeriodMax,
+      lk: { price: best.totalCost.amount, mode, a3 },
+    } : null;
+  }));
+  if (!out.PVZ && !out.POSTAMAT) throw new Error('калькулятор СДЭК: нет тарифов до города ' + cityCode);
+  return out;
+}
+
 // Стоимость до ПВЗ и до постамата для города; null — этот вариант недоступен
 export async function quote(cityCode, packages) {
   const key = 'quote:' + cityCode + ':' + JSON.stringify(packages.map(p => [p.weight, p.length, p.width, p.height]));
   return cached(key, 30 * 60e3, async () => {
+    if (calc === 'lk') {
+      try { return await lkTariffs(cityCode, packages); }
+      catch (e) {
+        // СДЭК недоступен — своя таблица, но с запасом, чтобы не продать доставку дешевле, чем заплатим
+        console.warn('[cdek] ' + e.message + ' — считаю по таблице ×' + config.cdek.lkFallbackFactor);
+        const out = await tableTariffs(cityCode, packages);
+        for (const q of Object.values(out)) q.cost = Math.ceil((q.cost - config.cdek.markup) * config.cdek.lkFallbackFactor + config.cdek.markup);
+        return out;
+      }
+    }
     if (calc === 'table') {
       const out = await tableTariffs(cityCode, packages);
       for (const [type, price] of Object.entries(config.cdek.flat))
