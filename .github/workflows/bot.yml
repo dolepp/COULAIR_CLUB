@@ -1,0 +1,50 @@
+name: Build coulair-bot
+
+on:
+  push:
+    branches: [main]
+    paths: ['bot/**', '.github/workflows/bot.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release binary
+        run: |
+          set -o pipefail
+          cargo build --release --manifest-path bot/Cargo.toml 2>&1 | tee build.log
+      - name: Publish build (binary + log) to builds/coulair-bot
+        if: always() && github.event_name != 'pull_request'
+        env:
+          BUILD_STATUS: ${{ job.status }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          printf 'Status: %s\nCommit: %s\n\n' "$BUILD_STATUS" "$GITHUB_SHA" > report.txt
+          tail -n 200 build.log >> report.txt 2>/dev/null || true
+          entries=$(printf '100644 blob %s\tbuild-report.txt\n' "$(git hash-object -w report.txt)")
+          if [ -f bot/target/release/coulair-bot ]; then
+            entries+=$'\n'$(printf '100755 blob %s\tcoulair-bot\n' "$(git hash-object -w bot/target/release/coulair-bot)")
+          fi
+          tree=$(printf '%s\n' "$entries" | git mktree)
+          git fetch origin refs/heads/builds/coulair-bot:refs/remotes/origin/builds/coulair-bot || true
+          parents=()
+          if git show-ref --verify --quiet refs/remotes/origin/builds/coulair-bot; then
+            parents=(-p refs/remotes/origin/builds/coulair-bot)
+          fi
+          commit=$(printf 'coulair-bot %s from %s\n' "$BUILD_STATUS" "$GITHUB_SHA" | git commit-tree "$tree" "${parents[@]}")
+          git push origin "$commit:refs/heads/builds/coulair-bot"
