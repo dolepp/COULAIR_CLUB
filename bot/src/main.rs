@@ -798,6 +798,9 @@ impl App {
         if self.is_blocked(&q["from"]) {
             return Ok(());
         }
+        if self.is_blocked(&q["from"]) {
+            return Ok(());
+        }
         let _ = self.call("answerCallbackQuery", json!({"callback_query_id": q["id"]})).await;
         let Some(chat) = q["message"]["chat"]["id"].as_i64() else { return Ok(()) };
         let data = q["data"].as_str().unwrap_or("");
@@ -836,6 +839,14 @@ async fn main() -> Result<()> {
         std::env::set_var("BOT_TOKEN", "check");
     }
     let cfg = Cfg::from_env()?;
+    let allow: Vec<i64> = env_or("ALLOW", "").split(',').filter_map(|x| x.trim().parse().ok()).collect();
+    let blocked: std::collections::HashSet<i64> = std::fs::read_to_string(env_or("BLOCK_FILE", "data/blocked.txt"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.trim().parse().ok())
+        .filter(|id| !allow.contains(id))
+        .collect();
+    eprintln!("[block] не отвечаю {} пользователям", blocked.len());
     let allow: Vec<i64> = env_or("ALLOW", "").split(',').filter_map(|x| x.trim().parse().ok()).collect();
     let blocked: std::collections::HashSet<i64> = std::fs::read_to_string(env_or("BLOCK_FILE", "data/blocked.txt"))
         .unwrap_or_default()
