@@ -14,6 +14,7 @@ export function telegramText(o) {
     `🧾 <b>Оплачен заказ №${o.id}</b>`,
     `💳 Сумма оплаты: <b>${rub(o.total)}</b>`,
     `Товары: ${rub(o.goods)} · доставка: ${d.customerCost ? rub(d.customerCost) : 'бесплатно'}`,
+    ...(o.promo ? [`🎟 Промокод ${esc(o.promo.code)}: −${rub(o.promo.discount)}`] : []),
     '',
     '<b>Товары</b>',
     ...o.items.map(i => `• ${esc(i.name)}${i.size ? ', ' + esc(i.size) : ''} × ${i.qty} — ${rub(i.price * i.qty)}`),

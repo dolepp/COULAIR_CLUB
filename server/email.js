@@ -76,6 +76,7 @@ export function orderEmail(o) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
           ${row('Товары', rub(o.goods))}
           ${row('Доставка СДЭК', deliveryValue)}
+          ${o.promo ? row('Промокод ' + esc(o.promo.code), '−' + rub(o.promo.discount)) : ''}
           <tr><td colspan="2" style="padding-top:8px;border-bottom:1px solid ${LINE};font-size:0;line-height:0;">&nbsp;</td></tr>
           <tr><td colspan="2" style="height:8px;font-size:0;line-height:0;">&nbsp;</td></tr>
           ${row('Оплачено', rub(o.total), true)}
@@ -124,6 +125,7 @@ export function orderEmail(o) {
     '',
     `Товары: ${rubText(o.goods)}`,
     `Доставка СДЭК: ${d.customerCost ? rubText(d.customerCost) : 'бесплатно'}`,
+    ...(o.promo ? [`Промокод ${o.promo.code}: −${rubText(o.promo.discount)}`] : []),
     `Оплачено: ${rubText(o.total)}`,
     '',
     `${TYPE[d.point.type] || 'СДЭК'}: ${d.cityName}, ${d.point.address}`,
@@ -149,6 +151,7 @@ export function adminEmail(o) {
   const lines = [
     ['Сумма оплаты', rubText(o.total)],
     ['Товары / доставка', `${rubText(o.goods)} / ${d.customerCost ? rubText(d.customerCost) : 'бесплатно'}`],
+    ...(o.promo ? [['Промокод', `${o.promo.code} (−${rubText(o.promo.discount)})`]] : []),
     ['ФИО', c.name], ['Телефон', c.phone], ['Email', c.email], ['Telegram', tg],
     ['Доставка', `СДЭК — ${TYPE_ADMIN[d.point.type] || d.point.type}`],
     ['Город', `${d.cityName} (код ${d.cityCode})`],

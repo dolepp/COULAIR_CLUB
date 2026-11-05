@@ -803,6 +803,13 @@ svg.fill { fill: currentColor; stroke: none; }
 .co-link { font-size: 14px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .co-link:hover { color: var(--muted); }
 
+.co-promo { display: flex; gap: 8px; }
+.co-promo input { flex: 1; min-width: 0; padding: 12px 14px; border: 1.5px solid var(--line, #ddd); border-radius: 10px; font: inherit; font-weight: 500; font-size: 16px; text-transform: uppercase; background: #fff; color: inherit; }
+.co-promo input:focus { outline: none; border-color: var(--ink); }
+.co-promo input:disabled { background: var(--sand); }
+.co-promo__btn { flex: none; padding-inline: 18px; }
+.co-promo__msg { margin: -4px 0 0; font-size: 14px; font-weight: 600; color: var(--sale); }
+.co-promo__msg.is-ok { color: #2d7a3e; }
 .co-total { padding: 14px 16px; border-radius: 14px; background: var(--sand); font-size: 15px; line-height: 1.5; }
 .co-total__row { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
 .co-total__row > span:first-child { color: var(--muted); }

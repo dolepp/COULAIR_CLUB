@@ -107,6 +107,11 @@
             <label class="field"><textarea name="comment" rows="2" placeholder="Пожелания к заказу" aria-label="Комментарий"></textarea></label>
           </section>
 
+          <div class="co-promo" id="coPromo">
+            <input name="promo" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Промокод" aria-label="Промокод">
+            <button class="btn btn--ghost co-promo__btn" type="button" id="coPromoBtn">Применить</button>
+          </div>
+          <p class="co-promo__msg" id="coPromoMsg" hidden></p>
           <div class="co-total" id="coTotal"></div>
           <label class="check"><input type="checkbox" name="agree">
             <span>Я подтверждаю согласие с условиями <a href="privacy/" target="_blank">политики конфиденциальности</a>
@@ -152,7 +157,35 @@
     const free = st.quote ? st.quote.freeShipping : false;
     const q = st.point && deliveryOf(st.point.type);
     const ship = q ? (free ? 0 : q.cost) : null;
-    return { goods, free, ship, total: goods + (ship || 0), q };
+    const full = goods + (ship || 0);
+    const p = st.promo;
+    let total = full;
+    if (p) {
+      total = p.kind === 'percent' ? full - Math.round(goods * p.value / 100) : p.kind === 'amount' ? full - p.value : p.value;
+      total = Math.min(full, Math.max(1, Math.round(total)));
+    }
+    return { goods, free, ship, total, discount: full - total, q };
+  }
+
+  function promoMsg(text, ok) {
+    const m = $('#coPromoMsg'); m.textContent = text || ''; m.hidden = !text; m.classList.toggle('is-ok', !!ok);
+  }
+  async function applyPromoCode() {
+    const input = form().elements.promo, btn = $('#coPromoBtn');
+    if (st.promo) {                                   // повторное нажатие — убрать промокод
+      st.promo = null; input.disabled = false; input.value = ''; btn.textContent = 'Применить';
+      promoMsg(''); renderTotal(); return;
+    }
+    const code = input.value.trim();
+    if (!code) { promoMsg('Введите промокод'); return; }
+    btn.disabled = true;
+    try {
+      st.promo = await api('/promo', { code });
+      input.value = st.promo.code; input.disabled = true; btn.textContent = 'Убрать';
+      promoMsg(`Промокод применён: ${st.promo.label}`, true);
+    } catch (e) { st.promo = null; promoMsg(e.message); }
+    btn.disabled = false;
+    renderTotal();
   }
 
   function renderTotal() {
@@ -163,6 +196,7 @@
       <div class="co-total__row"><span>Товары</span><span>${rub(t.goods)}</span></div>
       <div class="co-total__row"><span>${t.q ? withDays('Доставка СДЭК', t.q) : 'Доставка СДЭК'}</span><span>${shipText}</span></div>
       ${t.free ? '<div class="co-total__promo">От 2 позиций — доставка по России бесплатно</div>' : ''}
+      ${t.discount ? `<div class="co-total__row"><span>Промокод ${escapeHtml(st.promo.code)}</span><span>−${rub(t.discount)}</span></div>` : ''}
       <div class="co-total__row co-total__sum"><span>Итого</span><span>${rub(t.total)}</span></div>`;
     $('#coPay').textContent = st.point ? `Перейти к оплате · ${rub(t.total)}` : 'Перейти к оплате';
   }
@@ -453,6 +487,8 @@
   }
   function initForm() {
     const f = form();
+    $('#coPromoBtn').addEventListener('click', applyPromoCode);
+    f.elements.promo.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyPromoCode(); } });
     const phone = f.elements.phone;
     phone.addEventListener('input', () => { phone.value = formatPhone(phone.value); });
     phone.addEventListener('focus', () => { if (!phone.value) phone.value = '+7'; });
@@ -497,12 +533,14 @@
           contact: { ...Object.fromEntries(CONTACT_FIELDS.map(k => [k, f.elements[k].value.trim()])),
             telegram: tgValue(f.elements.telegram.value), noTelegram: f.elements.noTelegram.checked },
           comment: f.elements.comment.value.trim(),
+          promo: st.promo ? st.promo.code : '',
           cityCode: st.city.code, cityName: st.city.name, pointCode: st.point.code,
         });
         store.set('coulair-pending', { id: res.id, fromCart: st.fromCart });
         location.href = res.paymentUrl;
       } catch (err) {
         if (err.fields) Object.keys(err.fields).forEach(n => f.elements[n] && mark(n));
+        if (st.promo && /промокод/i.test(err.message)) { applyPromoCode(); promoMsg(err.message); }
         showError(err.fields ? Object.values(err.fields)[0] : err.message, err.support);
         btn.disabled = false;
         renderTotal();

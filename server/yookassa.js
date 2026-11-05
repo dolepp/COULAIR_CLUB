@@ -43,6 +43,19 @@ function receipt(order) {
       payment_subject: 'service',
     });
   }
+  // промокод: распределяем скидку по позициям, чтобы сумма чека совпала с платежом
+  const full = items.reduce((s, i) => s + Number(i.amount.value) * Number(i.quantity), 0);
+  if (Math.abs(full - order.total) > 0.009) {
+    const k = order.total / full;
+    let left = order.total;
+    items.forEach((i, n) => {
+      const line = n === items.length - 1 ? left : Math.round(Number(i.amount.value) * Number(i.quantity) * k * 100) / 100;
+      left = Math.round((left - line) * 100) / 100;
+      if (Number(i.quantity) !== 1) i.description = (i.description + ' × ' + Number(i.quantity)).slice(0, 128);
+      i.quantity = '1.00';
+      i.amount = money(line);
+    });
+  }
   return { customer: { email: order.contact.email, phone: order.contact.phone.replace(/\D/g, '') }, items };
 }
 

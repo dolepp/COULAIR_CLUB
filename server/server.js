@@ -8,6 +8,7 @@ import { config } from './config.js';
 import { normalizeItems, buildPackages, BadRequest } from './products.js';
 import { suggestCities, deliveryPoints, quote, cdekMode } from './cdek.js';
 import { createPayment, getPayment, yookassaReady } from './yookassa.js';
+import { findPromo, applyPromo, markPromoUsed } from './promo.js';
 import { createOrder, getOrder, saveOrder, listUnnotifiedOrders, listOrdersWithMailErrors } from './store.js';
 import { telegramText, sendTelegram, sendOrderEmail, sendAdminEmails } from './notify.js';
 
@@ -126,6 +127,7 @@ async function applyPayment(order, payment) {
       order.notified = order.notified || {};
       saveOrder(order);
       console.info('[order]', order.id, 'оплачен', order.total);
+      if (order.promo) try { markPromoUsed(order.promo.code); } catch (e) { console.error('[promo]', e.message); }
 
       try { order.notified.telegram = await sendTelegram(telegramText(order)); }
       catch (e) { console.error('[order]', order.id, e.message); order.notified.telegramError = e.message; }
@@ -167,7 +169,7 @@ function publicOrder(o) {
   return {
     id: o.id, status: o.status, createdAt: o.createdAt, paidAt: o.paidAt || null,
     items: o.items.map(({ name, size, qty, price, image }) => ({ name, size, qty, price, image })),
-    goods: o.goods, total: o.total, fromCart: !!o.fromCart, email: o.contact.email,
+    goods: o.goods, total: o.total, promo: o.promo ? { code: o.promo.code, discount: o.promo.discount } : null, fromCart: !!o.fromCart, email: o.contact.email,
     delivery: {
       type: o.delivery.point.type, city: o.delivery.cityName, address: o.delivery.point.address,
       cost: o.delivery.customerCost, daysMin: o.delivery.daysMin, daysMax: o.delivery.daysMax,
@@ -202,6 +204,14 @@ const routes = {
     };
   },
 
+  'POST /api/promo': async req => {
+    if (limited(req, 'promo', 20)) return [429, { error: 'Слишком много попыток, подождите минуту' }];
+    const p = findPromo((await readJson(req)).code);
+    if (!p) throw new BadRequest('Введите промокод');
+    if (p.error) throw new BadRequest(p.error);
+    return p;
+  },
+
   'POST /api/orders': async req => {
     if (limited(req, 'order', 10)) return [429, { error: 'Слишком много попыток, подождите минуту' }];
     const body = await readJson(req);
@@ -220,6 +230,9 @@ const routes = {
     if (!q) throw new BadRequest(point.type === 'POSTAMAT' ? 'В постамат этот заказ не доставить — выберите пункт выдачи' : 'СДЭК не доставляет в этот пункт — выберите другой');
 
     const customerCost = r.freeShipping ? 0 : q.cost;
+    const promo = findPromo(body.promo);
+    if (promo && promo.error) throw new BadRequest(promo.error);
+    const sum = applyPromo(promo, r.goods, customerCost);
     const order = createOrder({
       contact,
       comment: String(body.comment || '').trim().slice(0, 1000),
@@ -231,7 +244,8 @@ const routes = {
         tariff: q.tariff, cdekCost: q.cost, fixed: !!q.fixed, daysMin: q.daysMin, daysMax: q.daysMax,
         free: r.freeShipping, customerCost,
       },
-      total: r.goods + customerCost,
+      total: sum.total,
+      ...(promo ? { promo: { code: promo.code, kind: promo.kind, value: promo.value, discount: sum.discount } } : {}),
       fromCart: !!body.fromCart,
     });
 
