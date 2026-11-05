@@ -217,11 +217,8 @@ impl App {
 
     async fn load_site(&self) -> Result<SiteData> {
         let site = &self.cfg.site;
-        let (index, main_js, catalog) = tokio::try_join!(
-            self.get_text(&format!("{site}/")),
-            self.get_text(&format!("{site}/js/main.js")),
-            self.get_text(&format!("{site}/catalog/catalog.js")),
-        )?;
+        let (u_index, u_main, u_cat) = (format!("{site}/"), format!("{site}/js/main.js"), format!("{site}/catalog/catalog.js"));
+        let (index, main_js, catalog) = tokio::try_join!(self.get_text(&u_index), self.get_text(&u_main), self.get_text(&u_cat))?;
         let mut d = SiteData::default();
 
         // характеристики штанов
