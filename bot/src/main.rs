@@ -24,10 +24,72 @@ use tokio::sync::Mutex;
 
 const CACHE_TTL: Duration = Duration::from_secs(600);
 
-const BTN_PRODUCTS: &str = "🛍 Товары";
-const BTN_SPECS: &str = "📋 Характеристики";
-const BTN_SIZES: &str = "📏 Размерная сетка";
-const BTN_SUPPORT: &str = "💬 Поддержка";
+const BTN_PRODUCTS: &str = "Товары";
+const BTN_SPECS: &str = "Характеристики";
+const BTN_SIZES: &str = "Размерная сетка";
+const BTN_SUPPORT: &str = "Поддержка";
+
+/// Премиум-эмодзи (набор TgAndroidIcons — тот же, что в канале): (id, обычный эмодзи на замену)
+type Em = (&'static str, &'static str);
+mod em {
+    use super::Em;
+    pub const PRODUCTS: Em = ("5854776233950188167", "🏷");
+    pub const SPECS: Em = ("5877597667231534929", "🗒");
+    pub const SIZES: Em = ("5888642858533001671", "↔️");
+    pub const SUPPORT: Em = ("5884510167986343350", "💬");
+    pub const PRICE: Em = ("5811989245761426317", "💰");
+    pub const STAR: Em = ("5874948844935974490", "⭐️");
+    pub const SHIP: Em = ("5924720918826848520", "📦");
+    pub const COND: Em = ("5931621672846103580", "💫");
+    pub const PHOTO: Em = ("5846024087033353251", "📷");
+    pub const BACK: Em = ("5877629862306385808", "◀️");
+    pub const ORDER: Em = ("5967548335542767952", "💳");
+    pub const YES: Em = ("5776375003280838798", "✅");
+    pub const NO: Em = ("5778527486270770928", "❌");
+    pub const LINK: Em = ("5877465816030515018", "🔗");
+    pub const DOWN: Em = ("5886451926995833684", "⬇️");
+    pub const HI: Em = ("5994750571041525522", "👋");
+    pub const SHOP: Em = ("5983399041197675256", "🏪");
+    pub const HELP: Em = ("5906995262378741881", "🙋");
+}
+
+/// премиум-эмодзи в тексте (parse_mode=HTML)
+fn ce(e: Em) -> String {
+    format!("<tg-emoji emoji-id=\"{}\">{}</tg-emoji>", e.0, e.1)
+}
+
+/// кнопка с премиум-иконкой: callback
+fn bcb(e: Em, text: &str, data: &str) -> Value {
+    json!({"text": text, "callback_data": data, "icon_custom_emoji_id": e.0})
+}
+
+/// кнопка с премиум-иконкой: ссылка
+fn burl(e: Em, text: &str, url: &str) -> Value {
+    json!({"text": text, "url": url, "icon_custom_emoji_id": e.0})
+}
+
+fn tgemoji_re() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| re(r#"<tg-emoji emoji-id="\d+">(.*?)</tg-emoji>"#))
+}
+
+/// если Telegram не принял премиум-эмодзи — заменить их обычными
+fn strip_premium(v: &mut Value) {
+    match v {
+        Value::Object(m) => {
+            m.remove("icon_custom_emoji_id");
+            m.values_mut().for_each(strip_premium);
+        }
+        Value::Array(a) => a.iter_mut().for_each(strip_premium),
+        Value::String(s) if s.contains("<tg-emoji") => *s = tgemoji_re().replace_all(s, "$1").into_owned(),
+        _ => {}
+    }
+}
+
+/// длина текста, как её считает Telegram (без HTML-тегов)
+fn visible_len(s: &str) -> usize {
+    html_escape::decode_html_entities(&tag_re().replace_all(s, "")).encode_utf16().count()
+}
 
 /* ---------------- настройки ---------------- */
 
@@ -366,6 +428,18 @@ impl App {
     /* ---------- Telegram ---------- */
 
     async fn call(&self, method: &str, body: Value) -> Result<Value> {
+        match self.call_raw(method, &body).await {
+            Err(e) if body.to_string().contains("emoji") => {
+                eprintln!("[premium] {e:#} — шлю с обычными эмодзи");
+                let mut plain = body;
+                strip_premium(&mut plain);
+                self.call_raw(method, &plain).await
+            }
+            r => r,
+        }
+    }
+
+    async fn call_raw(&self, method: &str, body: &Value) -> Result<Value> {
         let url = format!("{}/bot{}/{}", self.cfg.api_base, self.cfg.token, method);
         let r = self.tg.post(&url).json(&body).send().await.map_err(|e| anyhow!("{method}: {}", e.without_url()))?;
         let v: Value = r.json().await.map_err(|e| anyhow!("{method}: {}", e.without_url()))?;
@@ -404,23 +478,40 @@ impl App {
         }
     }
 
-    /// Фото с подписью; фото с сайта загружаем сами (Telegram может не достучаться до сайта), file_id запоминаем
+    /// Фото с подписью; фото с сайта загружаем сами (Telegram может не достучаться до сайта), file_id запоминаем.
+    /// Если премиум-эмодзи не приняты — повтор с обычными.
     async fn send_photo(&self, chat: i64, url: &str, caption: &str, kb: Value) -> Result<()> {
         let known = self.photos.lock().await.get(url).cloned();
         if let Some(id) = known {
-            let body = json!({"chat_id": chat, "photo": id, "caption": caption, "parse_mode": "HTML", "reply_markup": kb});
+            let mut body = json!({"chat_id": chat, "photo": id, "caption": caption, "parse_mode": "HTML"});
+            if !kb.is_null() {
+                body["reply_markup"] = kb.clone();
+            }
             if self.call("sendPhoto", body).await.is_ok() {
                 return Ok(());
             }
         }
         let bytes = self.image(url).await?;
-        let form = reqwest::multipart::Form::new()
-            .text("chat_id", chat.to_string())
-            .text("caption", caption.to_string())
-            .text("parse_mode", "HTML")
-            .text("reply_markup", kb.to_string())
-            .part("photo", reqwest::multipart::Part::bytes(bytes).file_name("photo.jpg").mime_str("image/jpeg")?);
-        let msg = self.call_form("sendPhoto", form).await?;
+        let form = |caption: &str, kb: &Value| -> Result<reqwest::multipart::Form> {
+            let mut f = reqwest::multipart::Form::new()
+                .text("chat_id", chat.to_string())
+                .text("caption", caption.to_string())
+                .text("parse_mode", "HTML");
+            if !kb.is_null() {
+                f = f.text("reply_markup", kb.to_string());
+            }
+            Ok(f.part("photo", reqwest::multipart::Part::bytes(bytes.clone()).file_name("photo.jpg").mime_str("image/jpeg")?))
+        };
+        let msg = match self.call_form("sendPhoto", form(caption, &kb)?).await {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("[premium] {e:#} — фото с обычными эмодзи");
+                let (mut c, mut k) = (Value::String(caption.to_string()), kb.clone());
+                strip_premium(&mut c);
+                strip_premium(&mut k);
+                self.call_form("sendPhoto", form(c.as_str().unwrap_or(""), &k)?).await?
+            }
+        };
         self.remember_photo(&mut *self.photos.lock().await, url, &msg);
         Ok(())
     }
@@ -453,7 +544,10 @@ impl App {
 
     fn menu() -> Value {
         json!({
-            "keyboard": [[{"text": BTN_PRODUCTS}, {"text": BTN_SPECS}], [{"text": BTN_SIZES}, {"text": BTN_SUPPORT}]],
+            "keyboard": [
+                [{"text": BTN_PRODUCTS, "icon_custom_emoji_id": em::PRODUCTS.0}, {"text": BTN_SPECS, "icon_custom_emoji_id": em::SPECS.0}],
+                [{"text": BTN_SIZES, "icon_custom_emoji_id": em::SIZES.0}, {"text": BTN_SUPPORT, "icon_custom_emoji_id": em::SUPPORT.0}],
+            ],
             "resize_keyboard": true,
             "is_persistent": true,
         })
@@ -465,12 +559,18 @@ impl App {
 
     async fn start(&self, chat: i64) -> Result<()> {
         let text = format!(
-            "Привет! Это бот <b>COULAIR CLUB</b> — горнолыжные штаны и экипировка.\n\n\
-             {BTN_PRODUCTS} — что сейчас в продаже\n\
-             {BTN_SPECS} — из чего сделаны штаны\n\
-             {BTN_SIZES} — как подобрать размер\n\
-             {BTN_SUPPORT} — живой ответ от нашей команды\n\n\
-             Сайт: <a href=\"{site}\">{host}</a> · Канал: @{ch}",
+            "{hi} Привет! Это бот <b>COULAIR CLUB</b> — горнолыжные штаны и экипировка.\n\n\
+             {p} <b>{BTN_PRODUCTS}</b> — что сейчас в продаже\n\
+             {s} <b>{BTN_SPECS}</b> — из чего сделаны штаны\n\
+             {z} <b>{BTN_SIZES}</b> — как подобрать размер\n\
+             {h} <b>{BTN_SUPPORT}</b> — живой ответ от нашей команды\n\n\
+             {shop} Сайт: <a href=\"{site}\">{host}</a> · Канал: @{ch}",
+            hi = ce(em::HI),
+            p = ce(em::PRODUCTS),
+            s = ce(em::SPECS),
+            z = ce(em::SIZES),
+            h = ce(em::SUPPORT),
+            shop = ce(em::SHOP),
             site = self.cfg.site,
             host = self.cfg.site.trim_start_matches("https://"),
             ch = self.cfg.channel,
@@ -488,11 +588,12 @@ impl App {
             .iter()
             .map(|p| {
                 let price = p.price.map(|v| format!(" · {}", money(v))).unwrap_or_default();
-                let star = if p.main { "⭐ " } else { "" };
-                json!([{"text": format!("{star}{}{price}", p.name), "callback_data": format!("p:{}", p.id)}])
+                let icon = if p.main { em::STAR } else { em::PRODUCTS };
+                json!([bcb(icon, &format!("{}{price}", p.name), &format!("p:{}", p.id))])
             })
             .collect();
-        self.send(chat, "<b>Товары COULAIR CLUB</b>\nВыберите, что посмотреть 👇", json!({"inline_keyboard": rows})).await
+        let t = format!("{} <b>Товары COULAIR CLUB</b>\nВыберите, что посмотреть {}", ce(em::SHOP), ce(em::DOWN));
+        self.send(chat, &t, json!({"inline_keyboard": rows})).await
     }
 
     fn card_text(p: &Product) -> String {
@@ -501,18 +602,19 @@ impl App {
             t += &format!("\n{}", esc(&p.brand));
         }
         t += "\n\n";
+        let price = ce(em::PRICE);
         match (p.price, p.old_price) {
-            (Some(v), Some(o)) if o > v => t += &format!("💰 <b>{}</b>  <s>{}</s>\n", money(v), money(o)),
-            (Some(v), _) => t += &format!("💰 <b>{}</b>\n", money(v)),
-            (None, _) if p.avito.is_some() => t += "💰 Цена — в объявлении на Авито\n",
+            (Some(v), Some(o)) if o > v => t += &format!("{price} <b>{}</b>  <s>{}</s>\n", money(v), money(o)),
+            (Some(v), _) => t += &format!("{price} <b>{}</b>\n", money(v)),
+            (None, _) if p.avito.is_some() => t += &format!("{price} Цена — в объявлении на Авито\n"),
             _ => {}
         }
         if !p.sizes.is_empty() {
             let label = if p.sizes.len() > 1 { "Размеры" } else { "Размер" };
-            t += &format!("📏 {label}: {}\n", esc(&p.sizes.join(", ")));
+            t += &format!("{} {label}: {}\n", ce(em::SIZES), esc(&p.sizes.join(", ")));
         }
         if !p.condition.is_empty() {
-            let label = if p.main { "🚚" } else { "✨ Состояние:" };
+            let label = if p.main { ce(em::SHIP) } else { format!("{} Состояние:", ce(em::COND)) };
             t += &format!("{label} {}\n", esc(&p.condition));
         }
         if !p.features.is_empty() {
@@ -528,34 +630,45 @@ impl App {
     }
 
     fn card_kb(&self, p: &Product) -> Value {
-        let mut rows = vec![json!([{"text": "🛒 Заказать на сайте", "url": self.abs(&p.url)}])];
+        let mut rows = vec![json!([burl(em::ORDER, "Заказать на сайте", &self.abs(&p.url))])];
         if let Some(a) = &p.avito {
-            rows.push(json!([{"text": "Купить на Авито", "url": a}]));
+            rows.push(json!([burl(em::LINK, "Купить на Авито", a)]));
         }
         if p.main {
-            rows.push(json!([{"text": BTN_SIZES, "callback_data": "sizes"}, {"text": BTN_SPECS, "callback_data": "specs"}]));
+            rows.push(json!([bcb(em::SIZES, BTN_SIZES, "sizes"), bcb(em::SPECS, BTN_SPECS, "specs")]));
         }
         if p.images.len() > 1 {
-            rows.push(json!([{"text": format!("📷 Все фото ({})", p.images.len().min(10)), "callback_data": format!("ph:{}", p.id)}]));
+            rows.push(json!([bcb(em::PHOTO, &format!("Все фото ({})", p.images.len().min(10)), &format!("ph:{}", p.id))]));
         }
-        rows.push(json!([{"text": "◀️ Все товары", "callback_data": "list"}, {"text": BTN_SUPPORT, "callback_data": "support"}]));
+        rows.push(json!([bcb(em::BACK, "Все товары", "list"), bcb(em::SUPPORT, BTN_SUPPORT, "support")]));
         json!({"inline_keyboard": rows})
     }
 
     async fn product(&self, chat: i64, id: &str) -> Result<()> {
         let d = self.site().await;
         let Some(p) = d.products.iter().find(|p| p.id == id) else {
-            return self.send(chat, "Этого товара уже нет на сайте 🙁", json!({"inline_keyboard": [[{"text": "◀️ Все товары", "callback_data": "list"}]]})).await;
+            let kb = json!({"inline_keyboard": [[bcb(em::BACK, "Все товары", "list")]]});
+            return self.send(chat, &format!("{} Этого товара уже нет на сайте", ce(em::NO)), kb).await;
         };
         let text = Self::card_text(p);
         let kb = self.card_kb(p);
         if let Some(img) = p.images.first() {
-            match self.send_photo(chat, &self.abs(img), &cut(&text, 1024), kb.clone()).await {
+            let img = self.abs(img);
+            let r = if visible_len(&text) <= 1024 {
+                self.send_photo(chat, &img, &text, kb.clone()).await
+            } else {
+                // длинная подпись не влезает — фото с названием, текст следом
+                match self.send_photo(chat, &img, &format!("<b>{}</b>", esc(&p.name)), Value::Null).await {
+                    Ok(()) => return self.send(chat, &text, kb).await,
+                    e => e,
+                }
+            };
+            match r {
                 Ok(()) => return Ok(()),
                 Err(e) => eprintln!("[photo] {}: {e:#}", p.id),
             }
         }
-        self.send(chat, &cut(&text, 4000), kb).await
+        self.send(chat, &text, kb).await
     }
 
     async fn album(&self, chat: i64, id: &str) -> Result<()> {
@@ -571,9 +684,9 @@ impl App {
     async fn specs(&self, chat: i64) -> Result<()> {
         let (d, post) = tokio::join!(self.site(), self.spec_post());
         let main = d.products.iter().find(|p| p.main);
-        let mut t = format!("📋 <b>Характеристики — {}</b>\n", esc(main.map(|p| p.name.as_str()).unwrap_or("горнолыжные штаны")));
+        let mut t = format!("{} <b>Характеристики — {}</b>\n", ce(em::SPECS), esc(main.map(|p| p.name.as_str()).unwrap_or("горнолыжные штаны")));
         if let Some(p) = &post {
-            t += &format!("\n{}\n<a href=\"{}\">Пост в канале</a>\n", esc(&cut(&p.text, 2000)), p.link);
+            t += &format!("\n{}\n{} <a href=\"{}\">Пост в канале</a>\n", esc(&cut(&p.text, 2000)), ce(em::LINK), p.link);
         }
         if !d.specs.is_empty() {
             t += if post.is_some() { "\n<b>С сайта:</b>\n" } else { "\n" };
@@ -588,17 +701,17 @@ impl App {
         if post.is_none() && d.specs.is_empty() {
             t += "\nНе получилось загрузить характеристики. Напишите в поддержку — расскажем.";
         }
-        let mut rows = vec![json!([{"text": BTN_SIZES, "callback_data": "sizes"}])];
+        let mut rows = vec![json!([bcb(em::SIZES, BTN_SIZES, "sizes")])];
         if let Some(p) = main {
-            rows.push(json!([{"text": "🛒 Заказать на сайте", "url": self.abs(&p.url)}]));
+            rows.push(json!([burl(em::ORDER, "Заказать на сайте", &self.abs(&p.url))]));
         }
-        rows.push(json!([{"text": BTN_SUPPORT, "callback_data": "support"}]));
-        self.send(chat, &cut(&t, 4000), json!({"inline_keyboard": rows})).await
+        rows.push(json!([bcb(em::SUPPORT, BTN_SUPPORT, "support")]));
+        self.send(chat, &t, json!({"inline_keyboard": rows})).await
     }
 
     async fn sizes(&self, chat: i64) -> Result<()> {
         let d = self.site().await;
-        let mut t = String::from("📏 <b>Размерная сетка — штаны</b>\n");
+        let mut t = format!("{} <b>Размерная сетка — штаны</b>\n", ce(em::SIZES));
         if d.size_rows.is_empty() {
             t += "\nНе получилось загрузить таблицу с сайта. Напишите в поддержку — подберём размер по росту и весу.";
         } else {
@@ -606,31 +719,32 @@ impl App {
             let heads: Vec<String> = d.size_headers.iter().skip(1).map(|h| h.to_lowercase()).collect();
             for (cells, stock) in &d.size_rows {
                 let size = cells.first().cloned().unwrap_or_default();
-                let mark = if *stock { "✅" } else { "▫️" };
+                let mark = ce(if *stock { em::YES } else { em::NO });
                 let vals: Vec<String> = heads.iter().zip(cells.iter().skip(1)).map(|(h, v)| format!("{h} {v}")).collect();
                 t += &format!("\n{mark} <b>{}</b> — {}", esc(&size), esc(&vals.join(" · ")));
             }
-            t += "\n\n✅ — есть в наличии";
+            t += &format!("\n\n{} — есть в наличии · {} — нет", ce(em::YES), ce(em::NO));
             if !d.size_note.is_empty() {
                 t += &format!("\n\n{}", esc(&d.size_note.replace("Жирным — размеры", "Размеры")));
             }
         }
         let kb = json!({"inline_keyboard": [
-            [{"text": "Подобрать размер в поддержке", "url": self.support_url()}],
-            [{"text": BTN_SPECS, "callback_data": "specs"}, {"text": BTN_PRODUCTS, "callback_data": "list"}],
+            [burl(em::HELP, "Подобрать размер в поддержке", &self.support_url())],
+            [bcb(em::SPECS, BTN_SPECS, "specs"), bcb(em::PRODUCTS, BTN_PRODUCTS, "list")],
         ]});
         self.send(chat, &t, kb).await
     }
 
     fn support_kb(&self) -> Value {
-        json!({"inline_keyboard": [[{"text": format!("Написать в поддержку @{}", self.cfg.support), "url": self.support_url()}]]})
+        json!({"inline_keyboard": [[burl(em::SUPPORT, &format!("Написать в поддержку @{}", self.cfg.support), &self.support_url())]]})
     }
 
     async fn support(&self, chat: i64) -> Result<()> {
         let t = format!(
-            "💬 <b>Поддержка COULAIR CLUB</b>\n\n\
+            "{} <b>Поддержка COULAIR CLUB</b>\n\n\
              По заказу, оплате, доставке, обмену и выбору размера пишите нашей поддержке — @{}.\n\n\
              Чтобы ответили быстрее, сразу укажите номер заказа (если он есть) и ваш вопрос.",
+            ce(em::SUPPORT),
             self.cfg.support
         );
         self.send(chat, &t, self.support_kb()).await
@@ -638,8 +752,10 @@ impl App {
 
     async fn other(&self, chat: i64) -> Result<()> {
         let t = format!(
-            "Я умею показывать товары, характеристики и размерную сетку — выберите пункт меню 👇\n\n\
-             С вопросом лучше сразу в поддержку: @{}",
+            "Я умею показывать товары, характеристики и размерную сетку — выберите пункт меню {}\n\n\
+             {} С вопросом лучше сразу в поддержку: @{}",
+            ce(em::DOWN),
+            ce(em::SUPPORT),
             self.cfg.support
         );
         self.send(chat, &t, Self::menu()).await
