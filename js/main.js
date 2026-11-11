@@ -20,7 +20,7 @@ const CONFIG = {
   // Главный товар (блок со штанами 360° на главной). Цена/размеры меняются здесь.
   pants: {
     id: 'pants', type: 'pants', name: 'Широкие горнолыжные штаны',
-    price: 7890, oldPrice: 10000, sizes: ['S', 'M', 'L', 'XL'],
+    price: 7890, oldPrice: 10000, sizes: ['S', 'M', 'L'], soldSizes: ['XL'],
     image: 'assets/pants/3.jpg', url: './#pants',
   },
 
@@ -265,8 +265,12 @@ function initSizes() {
   const P = CONFIG.pants;
   $('#pants .price').innerHTML = `<span class="price__new">${rub(P.price)}</span>` + (P.oldPrice
     ? `<s class="price__old">${rub(P.oldPrice)}</s><span class="price__tag">−${Math.round((1 - P.price / P.oldPrice) * 100)}%</span>` : '');
-  $('#sizeList').innerHTML = P.sizes.map(z => `<button class="size" role="radio" aria-checked="false" data-size="${z}">${z}</button>`).join('');
-  $$('.size').forEach(btn => btn.addEventListener('click', () => {
+  const sold = new Set(P.soldSizes || []);
+  const allSizes = [...P.sizes, ...(P.soldSizes || []).filter(z => !P.sizes.includes(z))];
+  $('#sizeList').innerHTML = allSizes.map(z => sold.has(z)
+    ? `<button class="size is-sold" role="radio" aria-checked="false" aria-disabled="true" disabled data-size="${z}"><span>${z}</span><small>Закончились</small></button>`
+    : `<button class="size" role="radio" aria-checked="false" data-size="${z}">${z}</button>`).join('');
+  $$('.size:not(.is-sold)').forEach(btn => btn.addEventListener('click', () => {
     selectedSize = btn.dataset.size;
     $$('.size').forEach(b => b.setAttribute('aria-checked', String(b === btn)));
     wrap.classList.remove('is-error');
@@ -494,7 +498,10 @@ function initProductPage() {
 /* =====================================================================
    Корзина
    ===================================================================== */
-let cart = store.get('coulair-cart', []).filter(i => findProduct(i.id) && !findProduct(i.id).sold && !findProduct(i.id).avito);
+let cart = store.get('coulair-cart', []).filter(i => {
+  const p = findProduct(i.id);
+  return p && !p.sold && !p.avito && (!Array.isArray(p.sizes) || p.sizes.includes(i.size));
+});
 
 function saveCart() { store.set('coulair-cart', cart); renderCart(); rerenderCards(); }
 function cartCount(items = cart) { return items.reduce((s, i) => s + i.qty, 0); }
@@ -504,6 +511,10 @@ function addToCart(id, size = null) {
   const p = findProduct(id);
   if (!p) return;
   size = size || p.size || null;
+  if (Array.isArray(p.soldSizes) && p.soldSizes.includes(size)) {
+    toast(`Размер ${size} закончился`);
+    return;
+  }
   const found = cart.find(i => i.id === id && i.size === size);
   const inCart = cart.filter(i => i.id === id).reduce((n, i) => n + i.qty, 0);
   if (p.sold) { toast('Этот товар уже продан'); return; }

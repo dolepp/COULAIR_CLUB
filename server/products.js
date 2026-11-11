@@ -49,6 +49,9 @@ export function normalizeItems(raw) {
     let size = p.size || null;
     if (Array.isArray(p.sizes) && p.sizes.length) {
       size = String(it.size || '');
+      if (Array.isArray(p.soldSizes) && p.soldSizes.includes(size)) {
+        throw new BadRequest(`Размер ${size} у «${p.name}» закончился`);
+      }
       if (!p.sizes.includes(size)) throw new BadRequest(`Выберите размер для «${p.name}»`);
     }
     const k = p.id + '|' + (size || '');

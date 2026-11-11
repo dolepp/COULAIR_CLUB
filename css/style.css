@@ -189,10 +189,17 @@ svg.fill { fill: currentColor; stroke: none; }
   font-size: 16px; font-weight: 700;
   transition: border-color .2s, background .2s, color .2s;
 }
-.size:hover { border-color: var(--ink); }
+.size:hover:not(.is-sold) { border-color: var(--ink); }
 .size[aria-checked="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+.size.is-sold {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  background: #f5f4f1; border-color: var(--line); color: var(--muted);
+  cursor: not-allowed; line-height: 1.05;
+}
+.size.is-sold span { text-decoration: line-through; }
+.size.is-sold small { font-size: 10px; font-weight: 600; letter-spacing: .01em; color: var(--sale); }
 .sizes__error { margin: 10px 0 0; color: var(--sale); font-size: 14px; font-weight: 600; }
-.sizes.is-error .size { border-color: var(--sale); animation: shake .35s; }
+.sizes.is-error .size:not(.is-sold) { border-color: var(--sale); animation: shake .35s; }
 @keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 
 .perks { margin: 26px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; font-size: 15px; color: #45433f; }
