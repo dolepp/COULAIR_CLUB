@@ -20,7 +20,7 @@ const CONFIG = {
   // Главный товар (блок со штанами 360° на главной). Цена/размеры меняются здесь.
   pants: {
     id: 'pants', type: 'pants', name: 'Широкие горнолыжные штаны',
-    price: 7890, oldPrice: 10000, sizes: ['S', 'M', 'L'], soldSizes: ['XL'],
+    price: 7890, oldPrice: 10000, sizes: ['M', 'L'], soldSizes: ['S', 'XL'],
     image: 'assets/pants/3.jpg', url: './#pants',
   },
 
@@ -266,7 +266,11 @@ function initSizes() {
   $('#pants .price').innerHTML = `<span class="price__new">${rub(P.price)}</span>` + (P.oldPrice
     ? `<s class="price__old">${rub(P.oldPrice)}</s><span class="price__tag">−${Math.round((1 - P.price / P.oldPrice) * 100)}%</span>` : '');
   const sold = new Set(P.soldSizes || []);
-  const allSizes = [...P.sizes, ...(P.soldSizes || []).filter(z => !P.sizes.includes(z))];
+  const ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+  const allSizes = [...new Set([...P.sizes, ...(P.soldSizes || [])])].sort((a, b) => {
+    const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
   $('#sizeList').innerHTML = allSizes.map(z => sold.has(z)
     ? `<button class="size is-sold" role="radio" aria-checked="false" aria-disabled="true" disabled data-size="${z}"><span>${z}</span><small>Закончились</small></button>`
     : `<button class="size" role="radio" aria-checked="false" data-size="${z}">${z}</button>`).join('');
