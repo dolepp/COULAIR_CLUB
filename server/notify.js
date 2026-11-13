@@ -32,7 +32,7 @@ export function telegramText(o) {
     `Пункт: <code>${esc(d.point.code)}</code>`,
     `Адрес: ${esc(d.point.address)}`,
     `Тариф: ${d.tariff}` + (d.daysMin ? ` · срок ${d.daysMin === d.daysMax ? d.daysMin : d.daysMin + '–' + d.daysMax} дн.` : ''),
-    `${d.fixed ? 'Доставка по фикс. цене' : 'Стоимость по СДЭК'}: <b>${rub(d.cdekCost)}</b>${d.free ? ' (клиенту бесплатно — акция)' : ''}`,
+    `${d.fixed ? 'Доставка по фикс. цене' : 'Стоимость по СДЭК'}: <b>${rub(d.cdekCost)}</b>${d.discountPercent ? ` (скидка клиенту ${d.discountPercent}% на доставку)` : d.free ? ' (клиенту бесплатно — акция)' : ''}`,
     '',
     '<b>Места</b>',
     ...o.packages.map((p, k) => `${k + 1}) ${esc(p.name)} ${p.length}×${p.width}×${p.height} см, ${(p.weight / 1000).toFixed(2)} кг — ${esc(p.contents)}`),

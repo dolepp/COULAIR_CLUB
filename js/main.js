@@ -28,8 +28,9 @@ const CONFIG = {
   // Товары каталога берутся из catalog/catalog.js — его собирает tools/build_catalog.py из папки «товары».
   // Цены отсюда и из каталога сервер оплаты (/opt/coulair-api) читает сам — менять их нужно только здесь.
 
-  // Бесплатная доставка от стольких позиций в заказе (0 — всегда платная)
-  freeShippingFrom: 2,
+  // Скидка на доставку при покупке от двух единиц товара
+  deliveryDiscountFrom: 2,
+  deliveryDiscountPercent: 50,
 };
 
 const PLACEHOLDERS = {
@@ -590,8 +591,8 @@ function addToCart(id, size = null, color = selectedColor) {
   }
   if (found) found.qty += 1; else cart.push({ id, size, color, qty: 1 });
   saveCart();
-  const left = CONFIG.freeShippingFrom - cartCount();
-  toast(left > 0 ? `Добавлено. Ещё ${left} — и доставка бесплатно` : 'Добавлено. Доставка бесплатная!');
+  const left = CONFIG.deliveryDiscountFrom - cartCount();
+  toast(left > 0 ? `Добавлено. Ещё ${left} — и скидка 50% на доставку` : 'Добавлено. Скидка 50% на доставку!');
 }
 
 function renderCart() {
@@ -626,10 +627,10 @@ function renderCart() {
   $('#checkoutBtn').style.opacity = cart.length ? '' : '.4';
 
   const promo = $('#cartPromo');
-  const left = CONFIG.freeShippingFrom - count;
+  const left = CONFIG.deliveryDiscountFrom - count;
   promo.hidden = count === 0;
   promo.classList.toggle('is-done', left <= 0);
-  promo.textContent = left > 0 ? `Добавьте ещё ${left} поз. — доставка по РФ бесплатно` : 'Доставка по РФ — бесплатно 🎉';
+  promo.textContent = left > 0 ? `Добавьте ещё ${left} поз. — скидка 50% на доставку` : 'Скидка 50% на доставку 🎉';
 }
 
 function initCart() {

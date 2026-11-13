@@ -41,7 +41,7 @@ export function orderEmail(o) {
       <td align="right" style="padding:5px 0;font:${strong ? 800 : 600} ${strong ? 18 : 15}px/1.4 ${FONT};color:${INK};white-space:nowrap;">${value}</td>
     </tr>`;
 
-  const deliveryValue = d.customerCost > 0 ? rub(d.customerCost)
+  const deliveryValue = d.customerCost > 0 ? `${rub(d.customerCost)}${d.discountPercent ? ` <s>${rub(d.cdekCost)}</s> (скидка ${d.discountPercent}%)` : ''}`
     : `<span style="color:#2d7a3e;">Бесплатно</span>`;
 
   const html = `<!DOCTYPE html>
@@ -129,7 +129,7 @@ export function orderEmail(o) {
     ...o.items.map(i => `— ${i.name}${i.color ? ', ' + colorLabel(i.color) : ''}${i.size ? ', размер ' + i.size : ''} × ${i.qty}: ${rubText(i.price * i.qty)}${i.fulfillment?.length ? '; ' + fulfillmentText(i) : ''}`),
     '',
     `Товары: ${rubText(o.goods)}`,
-    `Доставка СДЭК: ${d.customerCost ? rubText(d.customerCost) : 'бесплатно'}`,
+    `Доставка СДЭК: ${d.customerCost ? rubText(d.customerCost) : 'бесплатно'}${d.discountPercent ? ` (скидка ${d.discountPercent}%)` : ''}`,
     ...(o.promo ? [`Промокод ${o.promo.code}: −${rubText(o.promo.discount)}`] : []),
     `Оплачено: ${rubText(o.total)}`,
     '',
@@ -162,7 +162,7 @@ export function adminEmail(o) {
     ['Город', `${d.cityName} (код ${d.cityCode})`],
     ['Пункт', d.point.code], ['Адрес', d.point.address],
     ['Тариф', `${d.tariff}${d.daysMin ? ` · срок ${days(d)}` : ''}`],
-    [d.fixed ? 'Доставка по фикс. цене' : 'Стоимость по СДЭК', `${rubText(d.cdekCost)}${d.free ? ' (клиенту бесплатно — акция)' : ''}`],
+    [d.fixed ? 'Доставка по фикс. цене' : 'Стоимость по СДЭК', `${rubText(d.cdekCost)}${d.discountPercent ? ` (скидка клиенту ${d.discountPercent}% на доставку)` : d.free ? ' (клиенту бесплатно — акция)' : ''}`],
     ['ЮKassa', o.payment && o.payment.id],
   ];
   const cell = 'padding:6px 10px;border-bottom:1px solid #e4e1dc;font:14px/1.45 Arial,sans-serif;vertical-align:top;';

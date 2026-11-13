@@ -153,11 +153,12 @@
   const days = q => (!q.daysMin ? '' : (q.daysMin === q.daysMax ? q.daysMin : `${q.daysMin}–${q.daysMax}`) + ' дн.');
   const withDays = (text, q) => (days(q) ? `${text} · ${days(q)}` : text);
 
+  const shippingCost = q => q.customerCost ?? Math.round(q.cost * (100 - (st.quote?.deliveryDiscountPercent || 0))) / 100;
   function totals() {
     const goods = st.quote ? st.quote.goods : localItems().reduce((s, i) => s + i.price * i.qty, 0);
-    const free = st.quote ? st.quote.freeShipping : false;
+    const discountPercent = st.quote ? st.quote.deliveryDiscountPercent || 0 : 0;
     const q = st.point && deliveryOf(st.point.type);
-    const ship = q ? (free ? 0 : q.cost) : null;
+    const ship = q ? shippingCost(q) : null;
     const full = goods + (ship || 0);
     const p = st.promo;
     let total = full;
@@ -165,7 +166,7 @@
       total = p.kind === 'percent' ? full - Math.round(goods * p.value / 100) : p.kind === 'amount' ? full - p.value : p.value;
       total = Math.min(full, Math.max(1, Math.round(total)));
     }
-    return { goods, free, ship, total, discount: full - total, q };
+    return { goods, discountPercent, ship, total, discount: full - total, q };
   }
 
   function promoMsg(text, ok) {
@@ -191,12 +192,12 @@
 
   function renderTotal() {
     const t = totals();
-    const shipText = t.ship === null ? (t.free ? '<span class="co-free">Бесплатно</span>' : '<span class="co-muted">выберите пункт</span>')
-      : t.ship === 0 ? `<span class="co-free">Бесплатно</span>${t.q ? ` <s>${rub(t.q.cost)}</s>` : ''}` : rub(t.ship);
+    const shipText = t.ship === null ? '<span class="co-muted">выберите пункт</span>'
+      : `${rub(t.ship)}${t.discountPercent && t.q ? ` <s>${rub(t.q.cost)}</s>` : ''}`;
     $('#coTotal').innerHTML = `
       <div class="co-total__row"><span>Товары</span><span>${rub(t.goods)}</span></div>
       <div class="co-total__row"><span>${t.q ? withDays('Доставка СДЭК', t.q) : 'Доставка СДЭК'}</span><span>${shipText}</span></div>
-      ${t.free ? '<div class="co-total__promo">От 2 позиций — доставка по России бесплатно</div>' : ''}
+      ${t.discountPercent ? '<div class="co-total__promo">От 2 позиций — скидка 50% на доставку</div>' : ''}
       ${t.discount ? `<div class="co-total__row"><span>Промокод ${escapeHtml(st.promo.code)}</span><span>−${rub(t.discount)}</span></div>` : ''}
       <div class="co-total__row co-total__sum"><span>Итого</span><span>${rub(t.total)}</span></div>`;
     $('#coPay').textContent = st.point ? `Перейти к оплате · ${rub(t.total)}` : 'Перейти к оплате';
@@ -314,10 +315,9 @@
 
   /* ---------- пункты: вкладки, карта, список ---------- */
   function renderTabs() {
-    const free = st.quote && st.quote.freeShipping;
     const tab = (type, label, n, q) => `<button type="button" class="co-tab" role="tab" data-type="${type}" aria-selected="${st.filter === type}">
       ${type !== 'ALL' ? `<i style="background:${TYPES[type].color}"></i>` : ''}${label}
-      <small>${q ? (free ? 'бесплатно' : rub(q.cost)) : n}</small></button>`;
+      <small>${q ? rub(shippingCost(q)) : n}</small></button>`;
     const html = [tab('ALL', 'Все', st.points.length)];
     for (const type of Object.keys(TYPES)) {
       const n = st.points.filter(p => p.type === type).length;
@@ -389,7 +389,7 @@
         <span class="co-point__type" style="--c:${TYPES[p.type].color}">${TYPES[p.type].label}</span>
         <span class="co-point__addr">${escapeHtml(p.address)}</span>
         <span class="co-point__meta">${escapeHtml(p.workTime)}${p.metro ? ' · м. ' + escapeHtml(p.metro) : ''}</span>
-        ${q2 ? `<span class="co-point__price">${withDays(st.quote.freeShipping ? 'Бесплатно' : rub(q2.cost), q2)}</span>` : ''}
+        ${q2 ? `<span class="co-point__price">${withDays(rub(shippingCost(q2)), q2)}</span>` : ''}
       </button></li>`;
     }).join('') + (list.length > LIST_LIMIT ? `<li class="co-points__empty">И ещё ${list.length - LIST_LIMIT} — приблизьте карту или воспользуйтесь поиском</li>` : '')
       : `<li class="co-points__empty">${q ? 'Ничего не нашли — попробуйте другой адрес' : 'В этой части карты пунктов нет — отдалите карту'}</li>`;
@@ -400,7 +400,6 @@
     st.pickerOpen = false;
     store.set('coulair-point', { city: st.city.code, code: p.code });
     const q = deliveryOf(p.type);
-    const free = st.quote && st.quote.freeShipping;
     $('#coChosen').innerHTML = `
       <div class="co-chosen__head">
         <span class="co-point__type" style="--c:${TYPES[p.type].color}">${TYPES[p.type].label} СДЭК</span>
@@ -409,7 +408,7 @@
       <p class="co-chosen__addr">${escapeHtml(st.city.name)}, ${escapeHtml(p.address)}</p>
       ${p.workTime ? `<p class="co-chosen__meta">${escapeHtml(p.workTime)}</p>` : ''}
       ${p.note ? `<p class="co-chosen__meta">${escapeHtml(p.note)}</p>` : ''}
-      ${q ? `<p class="co-chosen__price">${withDays(free ? 'Бесплатно' : rub(q.cost), q)}${days(q) ? ' после отправки' : ''}</p>` : ''}`;
+      ${q ? `<p class="co-chosen__price">${withDays(rub(shippingCost(q)), q)}${days(q) ? ' после отправки' : ''}</p>` : ''}`;
     $('#coChosen').hidden = false;
     $('#coPicker').hidden = true;
     $('#coTabs').hidden = true;
@@ -542,7 +541,7 @@
       } catch (err) {
         if (err.fields) Object.keys(err.fields).forEach(n => f.elements[n] && mark(n));
         if (st.promo && /промокод/i.test(err.message)) { applyPromoCode(); promoMsg(err.message); }
-        if (/Срок отправки изменился/.test(err.message)) await refreshQuote();
+        if (/Срок отправки изменился|Условия заказа изменились/.test(err.message)) await refreshQuote();
         showError(err.fields ? Object.values(err.fields)[0] : err.message, err.support);
         btn.disabled = false;
         renderTotal();

@@ -24,7 +24,7 @@ export function loadProducts() {
   const CONFIG = vm.runInNewContext('(' + m[1] + ')', {}, { timeout: 1000 });
 
   const list = [CONFIG.pants, ...(sandbox.window.CATALOG || [])].filter(Boolean);
-  cache = { key, list, byId: new Map(list.map(p => [p.id, p])), freeShippingFrom: CONFIG.freeShippingFrom || 0 };
+  cache = { key, list, byId: new Map(list.map(p => [p.id, p])), deliveryDiscountFrom: CONFIG.deliveryDiscountFrom || 2, deliveryDiscountPercent: CONFIG.deliveryDiscountPercent ?? 50 };
   return cache;
 }
 
@@ -34,7 +34,7 @@ const absUrl = p => (p && /^https?:/.test(p) ? p : config.siteUrl + '/' + String
 
 // Проверяет корзину и возвращает строки заказа с ценами сервера
 export function normalizeItems(raw, { managedPants = false } = {}) {
-  const { byId, freeShippingFrom } = loadProducts();
+  const { byId, deliveryDiscountFrom, deliveryDiscountPercent } = loadProducts();
   if (!Array.isArray(raw) || !raw.length) throw new BadRequest('Корзина пустая');
   if (raw.length > 30) throw new BadRequest('Слишком много позиций');
 
@@ -75,7 +75,7 @@ export function normalizeItems(raw, { managedPants = false } = {}) {
 
   const count = items.reduce((s, i) => s + i.qty, 0);
   const goods = items.reduce((s, i) => s + i.price * i.qty, 0);
-  return { items, count, goods, freeShipping: freeShippingFrom > 0 && count >= freeShippingFrom };
+  return { items, count, goods, freeShipping: false, deliveryDiscountPercent: deliveryDiscountFrom > 0 && count >= deliveryDiscountFrom ? deliveryDiscountPercent : 0 };
 }
 
 // Корзина → места для СДЭК по правилам из PACKAGING
