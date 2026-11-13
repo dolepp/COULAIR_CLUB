@@ -60,7 +60,7 @@ export function normalizeItems(raw, { managedPants = false } = {}) {
     const k = p.id + '|' + (size || '') + '|' + (color || '');
     const line = lines.get(k) || {
       id: p.id, type: p.type || 'other', name: p.name, size, color, price: p.price, qty: 0,
-      image: absUrl((p.images && p.images[0]) || p.image), url: absUrl(p.url),
+      image: absUrl(p.colorImages?.[color] || (p.images && p.images[0]) || p.image), url: absUrl(p.url),
     };
     line.qty += qty;
     lines.set(k, line);

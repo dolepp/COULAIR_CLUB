@@ -9,7 +9,7 @@ process.env.SITE_DIR = path.join(tmp, 'site');
 fs.mkdirSync(path.join(tmp,'site/catalog'),{recursive:true});
 fs.mkdirSync(path.join(tmp,'site/js'),{recursive:true});
 fs.writeFileSync(path.join(tmp,'site/catalog/catalog.js'),'window.CATALOG = [];');
-fs.writeFileSync(path.join(tmp,'site/js/main.js'), 'const CONFIG = {\npants: {id:"pants",type:"pants",name:"Штаны",price:7890,sizes:["S","M","L","XL"]}\n};');
+fs.writeFileSync(path.join(tmp,'site/js/main.js'), 'const CONFIG = {\npants: {id:"pants",type:"pants",name:"Штаны",price:7890,colorImages:{черный:"black.jpg",белый:"white-front.jpg"},sizes:["S","M","L","XL"]}\n};');
 process.env.SHEETS_ID = 'test';
 process.env.SHEETS_TOKEN_FILE = path.join(tmp, 'token.json');
 fs.writeFileSync(process.env.SHEETS_TOKEN_FILE, JSON.stringify({ client_id: 'test', client_secret: 'test', refresh_token: 'test' }));
@@ -19,10 +19,10 @@ globalThis.fetch = async (url, options) => {
   if (url.includes('oauth2.')) return { ok: true, json: async () => ({ access_token: 'test', expires_in: 3600 }) };
   if (url.includes('batchGet')) return { ok: true, json: async () => ({ valueRanges: [
     { values: [['Партия 1','S',3,3,0], ['Партия 1','M',9,7,2 - rows.filter(r => r[10] === 'M').length], ['Партия 1','L',9,7,2], ...(secondBatch ? [
-      ['Партия 2','S',5,0,5,'','черный','12–16 дней',true],
-      ['Партия 2','M',5,0,5,'','черный','12–16 дней',true],
-      ['Партия 2','L',5,0,5,'','черный','12–16 дней',true],
-      ['Партия 2','M',3,0,3,'','белый','12–16 дней',true],
+      ['Партия 2','S',5,0,5,'','черный','12–16 рабочих дней',true],
+      ['Партия 2','M',5,0,5,'','черный','12–16 рабочих дней',true],
+      ['Партия 2','L',5,0,5,'','черный','12–16 рабочих дней',true],
+      ['Партия 2','M',3,0,3,'','белый','12–16 рабочих дней',true],
     ] : [])] }, { values: rows },
   ] }) };
   if (url.includes('batchUpdate')) {
@@ -88,7 +88,7 @@ test('Приоритет первой партии, переход ко втор
   assert.equal(selected[0].preorder,false);
   assert.equal(selected[0].dispatchLabel,'в течение 10 рабочих дней');
   assert.equal(selected[2].preorder,true);
-  assert.equal(selected[2].dispatchLabel,'12–16 дней');
+  assert.equal(selected[2].dispatchLabel,'12–16 рабочих дней');
   assert.ok(selected.slice(3).every(a=>a.color==='белый' && a.batch==='Партия 2'));
   const stock=await sheets.availability();
   assert.equal(stock.colors['белый'].sizes.M,0);
@@ -103,13 +103,14 @@ test('Приоритет первой партии, переход ко втор
   assert.equal(sales.length,6);
   assert.equal(sales[3].values[0][14],'белый');
   assert.equal(sales[3].values[0][11],'Партия 2');
-  assert.equal(sales[3].values[0][16],'Предзаказ · Отправка 12–16 дней');
+  assert.equal(sales[3].values[0][16],'Предзаказ · Отправка 12–16 рабочих дней');
   assert.equal(sales[0].values[0][16],'Отправка в течение 10 рабочих дней');
   // Строки цветов не сливаются при нормализации корзины.
   const {normalizeItems}=await import('../products.js');
   const normalized=normalizeItems([{id:'pants',size:'M',color:'черный',qty:1},{id:'pants',size:'M',color:'белый',qty:1}],{managedPants:true});
   assert.equal(normalized.items.length,2);
   assert.deepEqual(normalized.items.map(i=>i.color),['черный','белый']);
+  assert.ok(normalized.items[1].image.endsWith('/white-front.jpg'));
   const {orderEmail}=await import('../email.js');
   const mailOrder={...order,contact:{name:'Тест',email:'test@example.com',phone:'+79000000000'},delivery:{...order.delivery,point:{type:'PVZ',code:'test',address:'Тест'},cityName:'Пермь'}};
   const firstMail=orderEmail({...mailOrder,items:[{...items[0],qty:1,fulfillment:[{...items[0].fulfillment[0],qty:1}]}]});
@@ -118,6 +119,6 @@ test('Приоритет первой партии, переход ко втор
   assert.doesNotMatch(firstMail.text,/12–16/);
   const secondMail=orderEmail({...mailOrder,items:[items[1]]});
   assert.match(secondMail.subject,/^Предзаказ/);
-  assert.match(secondMail.text,/12–16 дней/);
+  assert.match(secondMail.text,/12–16 рабочих дней/);
   assert.match(secondMail.text,/Белый/);
 });

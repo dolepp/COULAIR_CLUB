@@ -133,7 +133,7 @@
   /* ---------- товары и итог ---------- */
   function localItems() {
     // пока сервер не ответил — показываем по ценам из каталога
-    return st.items.map(i => { const p = findProduct(i.id); return { ...i, name: p.name, price: p.price, image: imgOf(p) }; });
+    return st.items.map(i => { const p = findProduct(i.id); return { ...i, name: p.name, price: p.price, image: imgOf(p, i.color) }; });
   }
 
   function renderItems() {

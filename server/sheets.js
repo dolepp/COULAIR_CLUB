@@ -49,7 +49,7 @@ export function parseBatches(rows) {
     if (!color) throw new Error('Некорректный цвет в строке ' + (i + 5));
     const batch = String(r[0]).trim();
     const priority = Number(batch.match(/\d+/)?.[0] || 999);
-    const dispatchLabel = String(r[7] || (priority === 1 ? 'в течение 10 рабочих дней' : '12–16 дней')).trim();
+    const dispatchLabel = String(r[7] || (priority === 1 ? 'в течение 10 рабочих дней' : '12–16 рабочих дней')).trim();
     const preorder = r[8] == null || r[8] === '' ? priority > 1 : /^(true|да|1)$/i.test(String(r[8]));
     batches.push({ batch, color, size, remaining, row: i + 5, priority, dispatchLabel, preorder });
   }

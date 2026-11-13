@@ -21,6 +21,7 @@ const CONFIG = {
   pants: {
     id: 'pants', type: 'pants', name: 'Широкие горнолыжные штаны',
     price: 7890, oldPrice: 10000, sizes: ['S', 'M', 'L', 'XL'], soldSizes: ['S', 'M', 'L', 'XL'],
+    colorImages: { 'черный': 'assets/pants/3.jpg', 'белый': 'assets/pants/white-front.jpg' },
     image: 'assets/pants/3.jpg', url: './#pants',
   },
 
@@ -51,7 +52,7 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const catalogItems = () => window.CATALOG || [];
 const allProducts = () => [CONFIG.pants, ...catalogItems()];
 const findProduct = id => allProducts().find(p => p.id === id);
-const imgOf = p => (p.images && p.images[0]) || p.image || PLACEHOLDERS[p.type] || PLACEHOLDERS.helmet;
+const imgOf = (p, color = null) => p.colorImages?.[color] || (p.images && p.images[0]) || p.image || PLACEHOLDERS[p.type] || PLACEHOLDERS.helmet;
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const store = {
@@ -270,7 +271,7 @@ function initSizes() {
     ? `<s class="price__old">${rub(P.oldPrice)}</s><span class="price__tag">−${Math.round((1 - P.price / P.oldPrice) * 100)}%</span>` : '');
   $('#pantsColors')?.addEventListener('click', e => {
     const b = e.target.closest('[data-color]'); if (!b) return;
-    selectedColor = b.dataset.color; selectPantsStock(); renderPantsSizes();
+    selectedColor = b.dataset.color; selectPantsStock(); renderPantsSizes(); showPantsColorPhoto();
   });
   renderPantsSizes();
 
@@ -293,13 +294,18 @@ function selectPantsStock() {
   CONFIG.pants.soldSizes = CONFIG.pants.sizes.filter(z => !(pantsStock?.[z] > 0));
   if (selectedSize && !(pantsStock?.[selectedSize] > 0)) selectedSize = null;
   $$('#pantsColors [data-color]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.color === selectedColor)));
-  if ($('#pantsPhotoNote')) $('#pantsPhotoNote').hidden = selectedColor !== 'белый';
+}
+function showPantsColorPhoto() {
+  const track = $('#hpTrack'); if (!track) return;
+  const src = CONFIG.pants.colorImages[selectedColor];
+  const index = $$('.hp-gallery__item img', track).findIndex(im => im.getAttribute('src') === src);
+  if (index >= 0) track.scrollTo({ left: index * track.clientWidth, behavior: 'smooth' });
 }
 function updatePantsPromise() {
   const btn = $('#orderPantsBtn'); if (!btn) return;
   const offer = pantsStockData?.colors?.[selectedColor]?.offers?.[selectedSize];
   btn.disabled = !pantsStock || !Object.values(pantsStock).some(n => n > 0);
-  btn.textContent = !pantsStock ? 'Не удалось проверить наличие' : btn.disabled ? 'Нет в наличии' : offer?.preorder ? 'Добавить предзаказ в корзину' : 'Добавить в корзину';
+  btn.textContent = !pantsStock ? 'Не удалось проверить наличие' : btn.disabled ? 'Нет в наличии' : 'Добавить в корзину';
   $('#pantsDispatch').textContent = offer ? `${offer.preorder ? 'Предзаказ · ' : ''}Отправка ${offer.dispatchLabel}` : pantsStock ? 'Выберите размер, чтобы узнать срок отправки' : 'Проверяем наличие и срок отправки…';
 }
 function renderPantsSizes() {
@@ -600,7 +606,7 @@ function renderCart() {
     const inCart = cart.filter(x => x.id === i.id).reduce((n, x) => n + x.qty, 0);
     const maxed = p.id === 'pants' ? i.qty >= pantsLimit(i.size, i.color) : p.stock && inCart >= p.stock;
     return `<li class="drawer__item">
-      <img src="${imgOf(p)}" alt="" onerror="this.onerror=null;this.src='${PLACEHOLDERS[p.type]}'">
+      <img src="${imgOf(p, i.color)}" alt="" onerror="this.onerror=null;this.src='${PLACEHOLDERS[p.type]}'">
       <div>
         <p class="drawer__item-name">${escapeHtml(p.name)}</p>
         <p class="drawer__item-meta">${i.id === 'pants' ? pantsColorLabel(i.color) + ' · ' : ''}${i.size ? 'Размер ' + escapeHtml(i.size) + ' · ' : ''}${rub(p.price * i.qty)}</p>
