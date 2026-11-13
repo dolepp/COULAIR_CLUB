@@ -48,7 +48,7 @@
       return `
         <ul class="co-items">${o.items.map(i => `
           <li class="co-item"><img src="${esc(i.image)}" alt="">
-            <div><p class="co-item__name">${esc(i.name)}</p><p class="co-item__meta">${i.size ? 'Размер ' + esc(i.size) + ' · ' : ''}${i.qty} шт.</p></div>
+            <div><p class="co-item__name">${esc(i.name)}</p><p class="co-item__meta">${i.color ? esc(i.color === 'белый' ? 'Белый' : 'Чёрный') + ' · ' : ''}${i.size ? 'Размер ' + esc(i.size) + ' · ' : ''}${i.qty} шт.</p>${i.fulfillment?.length ? `<p class="co-item__meta">${i.fulfillment.map(f => esc(`${f.qty} шт. — ${f.preorder ? 'Предзаказ · ' : ''}Отправка ${f.dispatchLabel}`)).join('; ')}</p>` : ''}</div>
             <strong>${rub(i.price * i.qty)}</strong></li>`).join('')}</ul>
         <div class="co-total">
           <div class="co-total__row"><span>Товары</span><span>${rub(o.goods)}</span></div>

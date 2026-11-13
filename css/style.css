@@ -902,3 +902,15 @@ svg.fill { fill: currentColor; stroke: none; }
   .doc__req { grid-template-columns: 1fr; gap: 2px; }
   .doc__req dd { margin-bottom: 8px; }
 }
+
+/* Цвет и срок отправки конкретного размера. */
+.pants-colors { margin: 22px 0 18px; }
+.pants-colors__list { display: flex; gap: 10px; margin-top: 10px; }
+.pants-color { display: inline-flex; align-items: center; gap: 9px; padding: 12px 18px; border: 1px solid #c8c5bf; border-radius: 8px; background: transparent; font: inherit; cursor: pointer; }
+.pants-color[aria-checked="true"] { border-color: #171717; box-shadow: inset 0 0 0 1px #171717; }
+.pants-color__swatch { width: 17px; height: 17px; border: 1px solid #aaa; border-radius: 50%; }
+.pants-color__swatch--black { background: #171717; }
+.pants-color__swatch--white { background: #fff; }
+.pants-color__note { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.drawer__dispatch { font-size: 12px; line-height: 1.5; color: var(--muted); margin: 5px 0; }
+.size.is-preorder small { display: block; font-size: 9px; line-height: 1.3; margin-top: 3px; }

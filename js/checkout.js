@@ -142,7 +142,8 @@
       <li class="co-item">
         <img src="${escapeHtml(i.image)}" alt="">
         <div><p class="co-item__name">${escapeHtml(i.name)}</p>
-          <p class="co-item__meta">${i.size ? 'Размер ' + escapeHtml(i.size) + ' · ' : ''}${i.qty} шт.</p></div>
+          <p class="co-item__meta">${i.id === 'pants' || i.color ? pantsColorLabel(i.color) + ' · ' : ''}${i.size ? 'Размер ' + escapeHtml(i.size) + ' · ' : ''}${i.qty} шт.</p>
+          ${(i.fulfillment?.length || i.id === 'pants') ? `<p class="co-item__meta">${escapeHtml(i.fulfillment?.length ? i.fulfillment.map(f => `${f.qty} шт. — ${f.preorder ? 'Предзаказ · ' : ''}Отправка ${f.dispatchLabel}`).join('; ') : pantsDispatchText(i))}</p>` : ''}</div>
         <strong>${rub(i.price * i.qty)}</strong>
       </li>`).join('');
   }
@@ -529,7 +530,7 @@
       btn.disabled = true; btn.textContent = 'Создаём платёж…';
       try {
         const res = await api('/orders', {
-          items: st.items, fromCart: st.fromCart, agree: true,
+          items: st.items, availabilityKey: st.quote?.availabilityKey, fromCart: st.fromCart, agree: true,
           contact: { ...Object.fromEntries(CONTACT_FIELDS.map(k => [k, f.elements[k].value.trim()])),
             telegram: tgValue(f.elements.telegram.value), noTelegram: f.elements.noTelegram.checked },
           comment: f.elements.comment.value.trim(),
@@ -541,6 +542,7 @@
       } catch (err) {
         if (err.fields) Object.keys(err.fields).forEach(n => f.elements[n] && mark(n));
         if (st.promo && /промокод/i.test(err.message)) { applyPromoCode(); promoMsg(err.message); }
+        if (/Срок отправки изменился/.test(err.message)) await refreshQuote();
         showError(err.fields ? Object.values(err.fields)[0] : err.message, err.support);
         btn.disabled = false;
         renderTotal();
@@ -551,7 +553,7 @@
   /* ---------- открытие ---------- */
   function open(items, fromCart) {
     if (!modal) { modal = build(); initCity(); initPicker(); initForm(); }
-    st.items = items.map(i => ({ id: i.id, size: i.size || null, qty: i.qty || 1 }));
+    st.items = items.map(i => ({ id: i.id, size: i.size || null, color: i.id === 'pants' ? pantsColor(i.color) : null, qty: i.qty || 1 }));
     st.fromCart = fromCart;
     st.quote = null;
     showError('');

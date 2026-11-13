@@ -119,6 +119,14 @@
             </div>
             <p class="hp-info__desc">Свободный крой, мембрана и проклеенные швы. Сидят поверх ботинок, не сковывают движения на склоне и в городе.</p>
 
+            <div class="pants-colors">
+              <p class="sizes__label">Цвет</p>
+              <div class="pants-colors__list" id="pantsColors" role="radiogroup" aria-label="Цвет штанов">
+                <button type="button" class="pants-color" role="radio" aria-checked="true" data-color="черный"><i class="pants-color__swatch pants-color__swatch--black"></i>Чёрный</button>
+                <button type="button" class="pants-color" role="radio" aria-checked="false" data-color="белый"><i class="pants-color__swatch pants-color__swatch--white"></i>Белый</button>
+              </div>
+              <p id="pantsPhotoNote" class="pants-color__note" hidden>На фото — чёрная модель.</p>
+            </div>
             <div class="sizes">
               <div class="sizes__head">
                 <p class="sizes__label">Размер</p>
@@ -139,7 +147,7 @@
               <li>Бесплатная доставка по РФ от 2 позиций</li>
               <li>Примерка и обмен размера</li>
             </ul>
-            <p class="hp-info__note">Предзаказ · отправка 12–16 рабочих дней</p>
+            <p class="hp-info__note" id="pantsDispatch" aria-live="polite">Выберите цвет и размер, чтобы узнать срок отправки</p>
 
             <details class="specs-acc">
               <summary>Характеристики</summary>
@@ -171,7 +179,7 @@
                     </tbody>
                   </table>
                 </div>
-                <p class="size-table__note">Все размеры в сантиметрах, замеры изделия. Жирным — размеры в наличии: M, L (S, XL — закончились). Не уверены в размере — напишите нам, подскажем по росту и весу.</p>
+                <p class="size-table__note">Все размеры в сантиметрах, замеры изделия. Наличие и срок отправки указаны при выборе цвета и размера. Не уверены в размере — напишите нам, подскажем по росту и весу.</p>
               </div>
             </details>
 

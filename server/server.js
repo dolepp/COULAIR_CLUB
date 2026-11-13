@@ -1,6 +1,7 @@
 /* Coulair API: /api/… за nginx.
    Корзина → расчёт СДЭК → заказ → платёж ЮKassa → (webhook) письмо клиенту + заявка в Telegram */
 import http from 'node:http';
+import { attachFulfillment } from './fulfillment.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -80,9 +81,10 @@ function cleanContact(c = {}) {
 }
 
 /* ---------- расчёт корзины и доставки ---------- */
+const fulfillmentKey = items => crypto.createHash('sha256').update(JSON.stringify(items.map(i => ({ id: i.id, size: i.size, color: i.color, qty: i.qty, fulfillment: i.fulfillment })))).digest('hex');
 async function calc(items, cityCode) {
   const cart = normalizeItems(items, { managedPants: sheetsEnabled() });
-  await checkStock(cart.items);
+  attachFulfillment(cart.items, await checkStock(cart.items));
   const packages = buildPackages(cart.items);
   const delivery = cityCode ? await quote(cityCode, packages) : null;
   return { ...cart, packages, delivery };
@@ -185,7 +187,7 @@ async function sendOrderMails(order, alertOnFail) {
 function publicOrder(o) {
   return {
     id: o.id, status: o.status, createdAt: o.createdAt, paidAt: o.paidAt || null,
-    items: o.items.map(({ name, size, qty, price, image }) => ({ name, size, qty, price, image })),
+    items: o.items.map(({ name, size, color, qty, price, image, fulfillment }) => ({ name, size, color, qty, price, image, fulfillment })),
     goods: o.goods, total: o.total, promo: o.promo ? { code: o.promo.code, discount: o.promo.discount } : null, fromCart: !!o.fromCart, email: o.contact.email,
     delivery: {
       type: o.delivery.point.type, city: o.delivery.cityName, address: o.delivery.point.address,
@@ -216,7 +218,7 @@ const routes = {
     const body = await readJson(req);
     const r = await calc(body.items, Number(body.cityCode) || null);
     return {
-      items: r.items, count: r.count, goods: r.goods, freeShipping: r.freeShipping,
+      items: r.items, availabilityKey: fulfillmentKey(r.items), count: r.count, goods: r.goods, freeShipping: r.freeShipping,
       weight: r.packages.reduce((s, p) => s + p.weight, 0),
       boxes: boxesOf(r.packages),
       delivery: r.delivery,
@@ -253,6 +255,8 @@ const routes = {
     if (promo && promo.error) throw new BadRequest(promo.error);
     const sum = applyPromo(promo, r.goods, customerCost);
     const order = await reserveOrder(r.items, allocations => {
+      attachFulfillment(r.items, allocations);
+      if (body.availabilityKey && body.availabilityKey !== fulfillmentKey(r.items)) throw new BadRequest('Срок отправки изменился: проверьте обновлённый расчёт и подтвердите заказ ещё раз');
       const o = createOrder({
       contact,
       comment: String(body.comment || '').trim().slice(0, 1000),

@@ -1,6 +1,7 @@
 /* Google Sheets — остатки по партиям и оплаченные продажи.
    Один процесс API: очередь объединяет чтение, резерв и запись без гонок. */
 import fs from 'node:fs';
+import { normalizeColor } from './fulfillment.js';
 import { BadRequest } from './products.js';
 import { listOrders, getOrder, saveOrder } from './store.js';
 
@@ -44,16 +45,22 @@ export function parseBatches(rows) {
     if (r[4] === '' || r[4] == null || !Number.isFinite(remaining) || !Number.isInteger(remaining)) {
       throw new Error('Некорректный остаток в строке ' + (i + 5));
     }
-    batches.push({ batch: String(r[0]).trim(), size, remaining, row: i + 5 });
+    const color = normalizeColor(r[6]);
+    if (!color) throw new Error('Некорректный цвет в строке ' + (i + 5));
+    const batch = String(r[0]).trim();
+    const priority = Number(batch.match(/\d+/)?.[0] || 999);
+    const dispatchLabel = String(r[7] || (priority === 1 ? 'в течение 10 рабочих дней' : '12–16 дней')).trim();
+    const preorder = r[8] == null || r[8] === '' ? priority > 1 : /^(true|да|1)$/i.test(String(r[8]));
+    batches.push({ batch, color, size, remaining, row: i + 5, priority, dispatchLabel, preorder });
   }
   if (!batches.length) throw new Error('В таблице нет партий');
-  return batches;
+  return batches.sort((a, b) => a.priority - b.priority || a.row - b.row);
 }
 
 async function snapshot(force = false) {
   if (!force && cache && Date.now() - cache.at < 15000) return cache;
   const params = new URLSearchParams({ valueRenderOption: 'UNFORMATTED_VALUE' });
-  params.append('ranges', "'Партии'!A5:F"); params.append('ranges', "'Заказы'!A9:P");
+  params.append('ranges', "'Партии'!A5:I"); params.append('ranges', "'Заказы'!A9:P");
   const r = await api('/values:batchGet?' + params);
   const rows = r.valueRanges[1].values || [];
   cache = { at: Date.now(), batches: parseBatches(r.valueRanges[0].values || []), rows,
@@ -68,7 +75,7 @@ function remainingBatches(s) {
     if (!['pending', 'paid'].includes(o.status)) continue;
     for (const a of o.inventoryAllocations || []) {
       if (s.keys.has(a.key)) continue; // Таблица уже учла эту единицу.
-      const b = batches.find(b => b.batch === a.batch && b.size === a.size);
+      const b = batches.find(b => b.batch === a.batch && b.size === a.size && b.color === normalizeColor(a.color));
       if (b) b.remaining -= 1;
     }
   }
@@ -83,7 +90,19 @@ export async function availability() {
   if (!sheetsEnabled()) return { enabled: false };
   return locked(async () => {
     const s = await snapshot();
-    return { enabled: true, checkedAt: new Date(s.at).toISOString(), sizes: sizesFrom(remainingBatches(s)) };
+    const batches = remainingBatches(s);
+    const colors = {};
+    for (const color of ['черный', 'белый']) {
+      const variant = batches.filter(b => b.color === color);
+      const sizes = sizesFrom(variant), offers = {}, lots = {};
+      for (const size of Object.keys(sizes)) {
+        const b = variant.find(b => b.size === size && b.color === color && b.remaining > 0);
+        lots[size] = variant.filter(b => b.size === size && b.remaining > 0).map(b => ({ batch: b.batch, available: b.remaining, dispatchLabel: b.dispatchLabel, preorder: b.preorder }));
+        if (b) offers[size] = { batch: b.batch, available: b.remaining, dispatchLabel: b.dispatchLabel, preorder: b.preorder };
+      }
+      colors[color] = { sizes, offers, lots };
+    }
+    return { enabled: true, checkedAt: new Date(s.at).toISOString(), sizes: colors['черный'].sizes, colors };
   });
 }
 
@@ -92,11 +111,13 @@ function allocate(items, batches) {
   items.forEach((it, itemIndex) => {
     if (it.id !== 'pants') return;
     const size = String(it.size || '').toUpperCase();
+    const color = normalizeColor(it.color);
+    if (!color) throw new BadRequest('Выберите цвет штанов');
     for (let unit = 0; unit < it.qty; unit++) {
-      const b = batches.find(b => b.size === size && b.remaining > 0);
+      const b = batches.find(b => b.size === size && b.color === color && b.remaining > 0);
       if (!b) throw new BadRequest(`Размер ${size} закончился или уже зарезервирован — обновите корзину`);
       b.remaining -= 1;
-      allocations.push({ itemIndex, unit, batch: b.batch, size });
+      allocations.push({ itemIndex, unit, batch: b.batch, color, size, dispatchLabel: b.dispatchLabel, preorder: b.preorder });
     }
   });
   return allocations;
@@ -129,14 +150,15 @@ export function saleRows(order, firstRow, existingKeys) {
     if (it.id === 'pants' && !a) throw new Error('Нет партии для оплаченного заказа ' + order.id);
     const n = row++;
     // Оплата распределяется поштучно: сумма строк точно равна сумме платежа.
-    return [{ range: `'Заказы'!A${n}:P${n}`, values: [[
+    return [{ range: `'Заказы'!A${n}:Q${n}`, values: [[
       `=IF(C${n}="","",COUNTA($C$9:C${n}))`, date, splitCents(order.total, units.length, i),
       splitCents(order.delivery.cdekCost || 0, units.length, i), 'ЮKassa', 'Ждёт',
       `=IF(OR(C${n}="",E${n}<>"ЮKassa"),"",C${n}*$C$5)`,
       it.id === 'pants' ? `=IF(C${n}="","",C${n}-$C$4-N(D${n})-N(G${n}))` : '',
       `Сайт, заказ №${order.id}; ${it.name}`, order.delivery.cityName || '', it.size || '',
       a?.batch || '', order.delivery.customerCost > 0 ? 'Оплачена' : 'Не оплачена',
-      it.id === 'pants' ? 'штаны' : it.name, it.id === 'pants' ? 'черный' : '', key,
+      it.id === 'pants' ? 'штаны' : it.name, it.id === 'pants' ? normalizeColor(it.color) : '', key,
+      a ? `${a.preorder ? 'Предзаказ · ' : ''}Отправка ${a.dispatchLabel}` : '',
     ]] }];
   });
 }

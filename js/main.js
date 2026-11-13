@@ -258,6 +258,9 @@ function initHeroProduct() {
    Размеры + добавление главного товара в корзину
    ===================================================================== */
 let selectedSize = null;
+let selectedColor = 'черный';
+const pantsColor = color => color === 'белый' ? 'белый' : 'черный';
+const pantsColorLabel = color => pantsColor(color) === 'белый' ? 'Белый' : 'Чёрный';
 function initSizes() {
   const wrap = $('.sizes');
   if (!$('#orderPantsBtn')) return;
@@ -265,6 +268,10 @@ function initSizes() {
   const P = CONFIG.pants;
   $('#pants .price').innerHTML = `<span class="price__new">${rub(P.price)}</span>` + (P.oldPrice
     ? `<s class="price__old">${rub(P.oldPrice)}</s><span class="price__tag">−${Math.round((1 - P.price / P.oldPrice) * 100)}%</span>` : '');
+  $('#pantsColors')?.addEventListener('click', e => {
+    const b = e.target.closest('[data-color]'); if (!b) return;
+    selectedColor = b.dataset.color; selectPantsStock(); renderPantsSizes();
+  });
   renderPantsSizes();
 
   $('#orderPantsBtn').addEventListener('click', () => {
@@ -273,58 +280,68 @@ function initSizes() {
       $('#sizeError').hidden = false;
       return;
     }
-    addToCart(CONFIG.pants.id, selectedSize);
+    addToCart(CONFIG.pants.id, selectedSize, selectedColor);
     const btn = $('#cartBtn');
     btn.classList.remove('is-bump'); void btn.offsetWidth; btn.classList.add('is-bump');
   });
 }
 
-// Остатки приходят только от API, до проверки покупка штанов закрыта.
-let pantsStock = null;
+// Цвет и партия выбираются по таблице; до проверки покупка закрыта.
+let pantsStock = null, pantsStockData = null;
+function selectPantsStock() {
+  pantsStock = pantsStockData?.colors?.[selectedColor]?.sizes || null;
+  CONFIG.pants.soldSizes = CONFIG.pants.sizes.filter(z => !(pantsStock?.[z] > 0));
+  if (selectedSize && !(pantsStock?.[selectedSize] > 0)) selectedSize = null;
+  $$('#pantsColors [data-color]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.color === selectedColor)));
+  if ($('#pantsPhotoNote')) $('#pantsPhotoNote').hidden = selectedColor !== 'белый';
+}
+function updatePantsPromise() {
+  const btn = $('#orderPantsBtn'); if (!btn) return;
+  const offer = pantsStockData?.colors?.[selectedColor]?.offers?.[selectedSize];
+  btn.disabled = !pantsStock || !Object.values(pantsStock).some(n => n > 0);
+  btn.textContent = !pantsStock ? 'Не удалось проверить наличие' : btn.disabled ? 'Нет в наличии' : offer?.preorder ? 'Добавить предзаказ в корзину' : 'Добавить в корзину';
+  $('#pantsDispatch').textContent = offer ? `${offer.preorder ? 'Предзаказ · ' : ''}Отправка ${offer.dispatchLabel}` : pantsStock ? 'Выберите размер, чтобы узнать срок отправки' : 'Проверяем наличие и срок отправки…';
+}
 function renderPantsSizes() {
   if (!$('#orderPantsBtn')) return;
   const P = CONFIG.pants, wrap = $('.sizes');
-  const sold = new Set(P.soldSizes || []);
-  const ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-  const allSizes = [...new Set([...P.sizes, ...(P.soldSizes || [])])].sort((a, b) => {
-    const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
-    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-  });
-  $('#sizeList').innerHTML = allSizes.map(z => sold.has(z)
-    ? `<button class="size is-sold" role="radio" aria-checked="false" aria-disabled="true" disabled data-size="${z}"><span>${z}</span><small>Закончились</small></button>`
-    : `<button class="size" role="radio" aria-checked="false" data-size="${z}">${z}</button>`).join('');
-  $$('.size:not(.is-sold)').forEach(btn => btn.addEventListener('click', () => {
+  const order = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+  const sizes = [...new Set([...P.sizes, ...(P.soldSizes || [])])].sort((a,b) => order.indexOf(a) - order.indexOf(b));
+  $('#sizeList').innerHTML = sizes.map(z => {
+    const sold = !(pantsStock?.[z] > 0), offer = pantsStockData?.colors?.[selectedColor]?.offers?.[z];
+    return `<button class="size${sold ? ' is-sold' : offer?.preorder ? ' is-preorder' : ''}" role="radio" aria-checked="${selectedSize === z}"${sold ? ' aria-disabled="true" disabled' : ''} data-size="${escapeHtml(z)}"><span>${escapeHtml(z)}</span>${sold ? '<small>Нет в наличии</small>' : offer?.preorder ? '<small>Предзаказ</small>' : ''}</button>`;
+  }).join('');
+  $$('#sizeList .size:not(.is-sold)').forEach(btn => btn.addEventListener('click', () => {
     selectedSize = btn.dataset.size;
-    $$('.size').forEach(b => b.setAttribute('aria-checked', String(b === btn)));
-    wrap.classList.remove('is-error');
-    $('#sizeError').hidden = true;
+    $$('#sizeList .size').forEach(b => b.setAttribute('aria-checked', String(b === btn)));
+    wrap.classList.remove('is-error'); $('#sizeError').hidden = true; updatePantsPromise();
   }));
-
-  const btn = $('#orderPantsBtn');
-  btn.disabled = !pantsStock || !Object.values(pantsStock).some(n => n > 0);
-  btn.textContent = !pantsStock ? 'Проверяем наличие…' : btn.disabled ? 'Нет в наличии' : 'В корзину';
+  updatePantsPromise();
 }
 async function refreshPantsStock() {
   try {
     const r = await fetch('/api/stock', { cache: 'no-store', signal: AbortSignal.timeout(10000) });
     const data = await r.json();
-    if (!r.ok || !data.enabled || !data.sizes) throw new Error('stock');
-    pantsStock = data.sizes;
-    CONFIG.pants.sizes = [...new Set([...CONFIG.pants.sizes, ...Object.keys(pantsStock)])];
-    CONFIG.pants.soldSizes = CONFIG.pants.sizes.filter(z => !(pantsStock[z] > 0));
-    CONFIG.pants.sold = !Object.values(pantsStock).some(n => n > 0);
-    if (selectedSize && !(pantsStock[selectedSize] > 0)) selectedSize = null;
-  } catch {
-    pantsStock = null;
-    CONFIG.pants.soldSizes = [...CONFIG.pants.sizes];
-    selectedSize = null;
-  }
-  renderPantsSizes();
-  if (pantsStock && selectedSize) $$('.size').forEach(b => b.setAttribute('aria-checked', String(b.dataset.size === selectedSize)));
-  if (!pantsStock && $('#orderPantsBtn')) $('#orderPantsBtn').textContent = 'Не удалось проверить наличие';
-  renderCart(); rerenderCards();
+    if (!r.ok || !data.enabled || !data.colors) throw new Error('stock');
+    pantsStockData = data;
+    CONFIG.pants.sizes = [...new Set([...CONFIG.pants.sizes, ...Object.values(data.colors).flatMap(c => Object.keys(c.sizes))])];
+  } catch { pantsStockData = null; selectedSize = null; }
+  selectPantsStock(); renderPantsSizes(); renderCart(); rerenderCards();
 }
-function pantsLimit(size) { return pantsStock ? (pantsStock[size] || 0) : 0; }
+function pantsLimit(size, color = selectedColor) { return pantsStockData?.colors?.[pantsColor(color)]?.sizes?.[size] || 0; }
+function pantsDispatchText(item) {
+  if (item.id !== 'pants') return '';
+  const lots = pantsStockData?.colors?.[pantsColor(item.color)]?.lots?.[item.size] || [];
+  if (!pantsStockData) return 'Проверяем срок отправки…';
+  let left = item.qty; const parts = [];
+  for (const lot of lots) {
+    const qty = Math.min(left, lot.available); if (!qty) continue;
+    parts.push(`${qty} шт. — ${lot.preorder ? 'Предзаказ · ' : ''}Отправка ${lot.dispatchLabel}`); left -= qty;
+    if (!left) break;
+  }
+  if (left) parts.push(`${left} шт. — нет в наличии`);
+  return parts.join('; ');
+}
 
 /* =====================================================================
    Каталог (карточки)
@@ -544,18 +561,19 @@ function saveCart() { store.set('coulair-cart', cart); renderCart(); rerenderCar
 function cartCount(items = cart) { return items.reduce((s, i) => s + i.qty, 0); }
 function cartSum(items = cart) { return items.reduce((s, i) => s + findProduct(i.id).price * i.qty, 0); }
 
-function addToCart(id, size = null) {
+function addToCart(id, size = null, color = selectedColor) {
+  color = id === 'pants' ? pantsColor(color) : null;
   const p = findProduct(id);
   if (!p) return;
   size = size || p.size || null;
-  if (id === 'pants' && cart.filter(i => i.id === id && i.size === size).reduce((n, i) => n + i.qty, 0) >= pantsLimit(size)) {
+  if (id === 'pants' && cart.filter(i => i.id === id && i.size === size && (id !== 'pants' || pantsColor(i.color) === color)).reduce((n, i) => n + i.qty, 0) >= pantsLimit(size, color)) {
     toast(pantsStock ? 'Больше нет в наличии' : 'Не удалось проверить наличие. Попробуйте ещё раз'); return;
   }
-  if (Array.isArray(p.soldSizes) && p.soldSizes.includes(size)) {
+  if (id !== 'pants' && Array.isArray(p.soldSizes) && p.soldSizes.includes(size)) {
     toast(`Размер ${size} закончился`);
     return;
   }
-  const found = cart.find(i => i.id === id && i.size === size);
+  const found = cart.find(i => i.id === id && i.size === size && (id !== 'pants' || pantsColor(i.color) === color));
   const inCart = cart.filter(i => i.id === id).reduce((n, i) => n + i.qty, 0);
   if (p.sold) { toast('Этот товар уже продан'); return; }
   // такие товары продаются на Авито — ведём туда
@@ -564,7 +582,7 @@ function addToCart(id, size = null) {
     toast(p.stock === 1 ? 'Это единственный экземпляр — он уже в корзине' : 'Больше нет в наличии');
     return;
   }
-  if (found) found.qty += 1; else cart.push({ id, size, qty: 1 });
+  if (found) found.qty += 1; else cart.push({ id, size, color, qty: 1 });
   saveCart();
   const left = CONFIG.freeShippingFrom - cartCount();
   toast(left > 0 ? `Добавлено. Ещё ${left} — и доставка бесплатно` : 'Добавлено. Доставка бесплатная!');
@@ -580,12 +598,13 @@ function renderCart() {
   list.innerHTML = cart.length ? cart.map((i, idx) => {
     const p = findProduct(i.id);
     const inCart = cart.filter(x => x.id === i.id).reduce((n, x) => n + x.qty, 0);
-    const maxed = p.id === 'pants' ? i.qty >= pantsLimit(i.size) : p.stock && inCart >= p.stock;
+    const maxed = p.id === 'pants' ? i.qty >= pantsLimit(i.size, i.color) : p.stock && inCart >= p.stock;
     return `<li class="drawer__item">
       <img src="${imgOf(p)}" alt="" onerror="this.onerror=null;this.src='${PLACEHOLDERS[p.type]}'">
       <div>
         <p class="drawer__item-name">${escapeHtml(p.name)}</p>
-        <p class="drawer__item-meta">${i.size ? 'Размер ' + escapeHtml(i.size) + ' · ' : ''}${rub(p.price * i.qty)}</p>
+        <p class="drawer__item-meta">${i.id === 'pants' ? pantsColorLabel(i.color) + ' · ' : ''}${i.size ? 'Размер ' + escapeHtml(i.size) + ' · ' : ''}${rub(p.price * i.qty)}</p>
+        ${i.id === 'pants' ? `<p class="drawer__dispatch">${escapeHtml(pantsDispatchText(i))}</p>` : ''}
         <div class="qty">
           <button class="qty__btn" data-qty="-1" data-idx="${idx}" aria-label="Меньше">−</button>
           <span class="qty__n">${i.qty}</span>

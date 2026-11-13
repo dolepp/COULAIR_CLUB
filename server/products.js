@@ -1,6 +1,7 @@
 /* Товары и цены берутся прямо с сайта — единственный источник правды.
    Клиент присылает только id, размер и количество; цену сервер считает сам. */
 import fs from 'node:fs';
+import { normalizeColor } from './fulfillment.js';
 import path from 'node:path';
 import vm from 'node:vm';
 import { config, PACKAGING } from './config.js';
@@ -54,9 +55,11 @@ export function normalizeItems(raw, { managedPants = false } = {}) {
       }
       if (!(managedPants && p.id === 'pants' ? /^[A-Z0-9-]{1,8}$/.test(size) : p.sizes.includes(size))) throw new BadRequest(`Выберите размер для «${p.name}»`);
     }
-    const k = p.id + '|' + (size || '');
+    const color = p.id === 'pants' ? normalizeColor(it.color) : null;
+    if (p.id === 'pants' && !color) throw new BadRequest('Выберите чёрный или белый цвет штанов');
+    const k = p.id + '|' + (size || '') + '|' + (color || '');
     const line = lines.get(k) || {
-      id: p.id, type: p.type || 'other', name: p.name, size, price: p.price, qty: 0,
+      id: p.id, type: p.type || 'other', name: p.name, size, color, price: p.price, qty: 0,
       image: absUrl((p.images && p.images[0]) || p.image), url: absUrl(p.url),
     };
     line.qty += qty;

@@ -26,7 +26,7 @@ const money = n => ({ value: Number(n).toFixed(2), currency: 'RUB' });
 
 function receipt(order) {
   const items = order.items.map(i => ({
-    description: (i.name + (i.size ? ', размер ' + i.size : '')).slice(0, 128),
+    description: (i.name + (i.color ? ', ' + i.color : '') + (i.size ? ', размер ' + i.size : '')).slice(0, 128),
     quantity: i.qty.toFixed(2),
     amount: money(i.price),
     vat_code: Y.vatCode,

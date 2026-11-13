@@ -1,6 +1,7 @@
 /* Уведомления об оплаченном заказе: заявка в Telegram, письмо клиенту и письма админам */
 import nodemailer from 'nodemailer';
 import { config } from './config.js';
+import { colorLabel, fulfillmentText } from './fulfillment.js';
 import { orderEmail, adminEmail } from './email.js';
 
 const rub = n => Number(n).toLocaleString('ru-RU') + ' ₽';
@@ -17,7 +18,7 @@ export function telegramText(o) {
     ...(o.promo ? [`🎟 Промокод ${esc(o.promo.code)}: −${rub(o.promo.discount)}`] : []),
     '',
     '<b>Товары</b>',
-    ...o.items.map(i => `• ${esc(i.name)}${i.size ? ', ' + esc(i.size) : ''} × ${i.qty} — ${rub(i.price * i.qty)}`),
+    ...o.items.map(i => `• ${esc(i.name)}${i.color ? ', ' + esc(colorLabel(i.color)) : ''}${i.size ? ', ' + esc(i.size) : ''} × ${i.qty} — ${rub(i.price * i.qty)}${i.fulfillment?.length ? '\n' + esc(fulfillmentText(i)) : ''}`),
     '',
     '<b>Получатель</b>',
     `ФИО: <code>${esc(o.contact.name)}</code>`,
