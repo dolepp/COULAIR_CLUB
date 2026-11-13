@@ -9,8 +9,10 @@ import { normalizeItems, buildPackages, BadRequest } from './products.js';
 import { suggestCities, deliveryPoints, quote, cdekMode } from './cdek.js';
 import { createPayment, getPayment, yookassaReady } from './yookassa.js';
 import { findPromo, applyPromo, markPromoUsed } from './promo.js';
-import { createOrder, getOrder, saveOrder, listUnnotifiedOrders, listOrdersWithMailErrors } from './store.js';
+import { createOrder, getOrder, saveOrder, listUnnotifiedOrders, listOrdersWithMailErrors, listOrders } from './store.js';
 import { telegramText, sendTelegram, sendOrderEmail, sendAdminEmails } from './notify.js';
+
+import { sheetsEnabled, availability, checkStock, reserveOrder, identifyAllocations, syncSale } from './sheets.js';
 
 // Только для локальной проверки: заказ считается оплаченным без ЮKassa. На сервере не включать!
 const FAKE_PAYMENT = process.env.DEV_FAKE_PAYMENT === '1';
@@ -79,7 +81,8 @@ function cleanContact(c = {}) {
 
 /* ---------- расчёт корзины и доставки ---------- */
 async function calc(items, cityCode) {
-  const cart = normalizeItems(items);
+  const cart = normalizeItems(items, { managedPants: sheetsEnabled() });
+  await checkStock(cart.items);
   const packages = buildPackages(cart.items);
   const delivery = cityCode ? await quote(cityCode, packages) : null;
   return { ...cart, packages, delivery };
@@ -98,6 +101,7 @@ async function applyPayment(order, payment) {
   try {
     order = getOrder(order.id) || order;            // свежая версия с диска
     if (order.status === 'paid') {
+      await recordSale(order);
       if (!order.notified || !order.notified.telegram) {
         try {
           order.notified = order.notified || {};
@@ -127,6 +131,7 @@ async function applyPayment(order, payment) {
       order.notified = order.notified || {};
       saveOrder(order);
       console.info('[order]', order.id, 'оплачен', order.total);
+      await recordSale(order);
       if (order.promo) try { markPromoUsed(order.promo.code); } catch (e) { console.error('[promo]', e.message); }
 
       try { order.notified.telegram = await sendTelegram(telegramText(order)); }
@@ -141,6 +146,18 @@ async function applyPayment(order, payment) {
     return order;
   } finally {
     busy.delete(order.id);
+  }
+}
+
+async function recordSale(order) {
+  try {
+    await syncSale(order);
+    const fresh = getOrder(order.id);
+    if (fresh?.sheetSyncedAt) { order.sheetSyncedAt = fresh.sheetSyncedAt; delete order.sheetSyncError; }
+  } catch (e) {
+    order.sheetSyncError = e.message;
+    saveOrder(order);
+    console.error('[sheets]', order.id, e.message);
   }
 }
 
@@ -180,6 +197,8 @@ function publicOrder(o) {
 
 /* ---------- маршруты ---------- */
 const routes = {
+  'GET /api/stock': async () => availability(),
+
   'GET /api/health': async () => ({ ok: true, cdek: cdekMode, yookassa: yookassaReady() }),
 
   'GET /api/cdek/cities': async (req, url) => {
@@ -233,7 +252,8 @@ const routes = {
     const promo = findPromo(body.promo);
     if (promo && promo.error) throw new BadRequest(promo.error);
     const sum = applyPromo(promo, r.goods, customerCost);
-    const order = createOrder({
+    const order = await reserveOrder(r.items, allocations => {
+      const o = createOrder({
       contact,
       comment: String(body.comment || '').trim().slice(0, 1000),
       items: r.items, goods: r.goods, count: r.count,
@@ -247,6 +267,11 @@ const routes = {
       total: sum.total,
       ...(promo ? { promo: { code: promo.code, kind: promo.kind, value: promo.value, discount: sum.discount } } : {}),
       fromCart: !!body.fromCart,
+      inventoryTracked: sheetsEnabled(),
+      });
+      o.inventoryAllocations = identifyAllocations(o, allocations);
+      saveOrder(o);
+      return o;
     });
 
     if (FAKE_PAYMENT) {
@@ -365,3 +390,22 @@ setInterval(async () => {
     }
   }
 }, 5 * 60_000).unref();
+
+// Резервы снимаются только после подтверждённой отмены платежа.
+let sheetsPolling = false;
+setInterval(async () => {
+  if (!sheetsEnabled() || sheetsPolling) return;
+  sheetsPolling = true;
+  try {
+    for (const o of listOrders().filter(o => o.inventoryTracked)) {
+      if (busy.has(o.id)) continue;
+      if (o.status === 'paid' && !o.sheetSyncedAt) {
+        busy.add(o.id);
+        try { await recordSale(o); } finally { busy.delete(o.id); }
+      } else if (o.status === 'pending' && o.payment?.id) {
+        try { await applyPayment(o, await getPayment(o.payment.id)); }
+        catch (e) { console.error('[stock-payment]', o.id, e.message); }
+      }
+    }
+  } finally { sheetsPolling = false; }
+}, 60000).unref();

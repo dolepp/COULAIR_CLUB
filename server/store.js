@@ -74,3 +74,9 @@ export function listOrdersWithMailErrors() {
     return [];
   }
 }
+
+export function listOrders() {
+  return fs.readdirSync(dir).filter(f => f.endsWith('.json')).flatMap(f => {
+    try { return [JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'))]; } catch { return []; }
+  });
+}

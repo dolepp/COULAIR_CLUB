@@ -32,7 +32,7 @@ export class BadRequest extends Error {}
 const absUrl = p => (p && /^https?:/.test(p) ? p : config.siteUrl + '/' + String(p || '').replace(/^\.?\//, ''));
 
 // Проверяет корзину и возвращает строки заказа с ценами сервера
-export function normalizeItems(raw) {
+export function normalizeItems(raw, { managedPants = false } = {}) {
   const { byId, freeShippingFrom } = loadProducts();
   if (!Array.isArray(raw) || !raw.length) throw new BadRequest('Корзина пустая');
   if (raw.length > 30) throw new BadRequest('Слишком много позиций');
@@ -41,7 +41,7 @@ export function normalizeItems(raw) {
   for (const it of raw) {
     const p = byId.get(String(it && it.id));
     if (!p) throw new BadRequest('Товар не найден — обновите страницу');
-    if (p.sold) throw new BadRequest(`«${p.name}» уже продан`);
+    if (p.sold && !(managedPants && p.id === 'pants')) throw new BadRequest(`«${p.name}» уже продан`);
     if (p.avito) throw new BadRequest(`«${p.name}» продаётся на Авито: ${p.avito}`);
     const qty = Math.floor(Number(it.qty) || 0);
     if (qty < 1 || qty > 20) throw new BadRequest('Неверное количество');
@@ -49,10 +49,10 @@ export function normalizeItems(raw) {
     let size = p.size || null;
     if (Array.isArray(p.sizes) && p.sizes.length) {
       size = String(it.size || '');
-      if (Array.isArray(p.soldSizes) && p.soldSizes.includes(size)) {
+      if (!(managedPants && p.id === 'pants') && Array.isArray(p.soldSizes) && p.soldSizes.includes(size)) {
         throw new BadRequest(`Размер ${size} у «${p.name}» закончился`);
       }
-      if (!p.sizes.includes(size)) throw new BadRequest(`Выберите размер для «${p.name}»`);
+      if (!(managedPants && p.id === 'pants' ? [...p.sizes, ...(p.soldSizes || [])] : p.sizes).includes(size)) throw new BadRequest(`Выберите размер для «${p.name}»`);
     }
     const k = p.id + '|' + (size || '');
     const line = lines.get(k) || {

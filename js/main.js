@@ -20,7 +20,7 @@ const CONFIG = {
   // Главный товар (блок со штанами 360° на главной). Цена/размеры меняются здесь.
   pants: {
     id: 'pants', type: 'pants', name: 'Широкие горнолыжные штаны',
-    price: 7890, oldPrice: 10000, sizes: ['M', 'L'], soldSizes: ['S', 'XL'],
+    price: 7890, oldPrice: 10000, sizes: ['S', 'M', 'L', 'XL'], soldSizes: ['S', 'M', 'L', 'XL'],
     image: 'assets/pants/3.jpg', url: './#pants',
   },
 
@@ -265,6 +265,25 @@ function initSizes() {
   const P = CONFIG.pants;
   $('#pants .price').innerHTML = `<span class="price__new">${rub(P.price)}</span>` + (P.oldPrice
     ? `<s class="price__old">${rub(P.oldPrice)}</s><span class="price__tag">−${Math.round((1 - P.price / P.oldPrice) * 100)}%</span>` : '');
+  renderPantsSizes();
+
+  $('#orderPantsBtn').addEventListener('click', () => {
+    if (!selectedSize) {
+      wrap.classList.remove('is-error'); void wrap.offsetWidth; wrap.classList.add('is-error');
+      $('#sizeError').hidden = false;
+      return;
+    }
+    addToCart(CONFIG.pants.id, selectedSize);
+    const btn = $('#cartBtn');
+    btn.classList.remove('is-bump'); void btn.offsetWidth; btn.classList.add('is-bump');
+  });
+}
+
+// Остатки приходят только от API, до проверки покупка штанов закрыта.
+let pantsStock = null;
+function renderPantsSizes() {
+  if (!$('#orderPantsBtn')) return;
+  const P = CONFIG.pants, wrap = $('.sizes');
   const sold = new Set(P.soldSizes || []);
   const ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
   const allSizes = [...new Set([...P.sizes, ...(P.soldSizes || [])])].sort((a, b) => {
@@ -281,17 +300,31 @@ function initSizes() {
     $('#sizeError').hidden = true;
   }));
 
-  $('#orderPantsBtn').addEventListener('click', () => {
-    if (!selectedSize) {
-      wrap.classList.remove('is-error'); void wrap.offsetWidth; wrap.classList.add('is-error');
-      $('#sizeError').hidden = false;
-      return;
-    }
-    addToCart(CONFIG.pants.id, selectedSize);
-    const btn = $('#cartBtn');
-    btn.classList.remove('is-bump'); void btn.offsetWidth; btn.classList.add('is-bump');
-  });
+  const btn = $('#orderPantsBtn');
+  btn.disabled = !pantsStock || !Object.values(pantsStock).some(n => n > 0);
+  btn.textContent = !pantsStock ? 'Проверяем наличие…' : btn.disabled ? 'Нет в наличии' : 'В корзину';
 }
+async function refreshPantsStock() {
+  try {
+    const r = await fetch('/api/stock', { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+    const data = await r.json();
+    if (!r.ok || !data.enabled || !data.sizes) throw new Error('stock');
+    pantsStock = data.sizes;
+    CONFIG.pants.sizes = [...new Set([...CONFIG.pants.sizes, ...Object.keys(pantsStock)])];
+    CONFIG.pants.soldSizes = CONFIG.pants.sizes.filter(z => !(pantsStock[z] > 0));
+    CONFIG.pants.sold = !Object.values(pantsStock).some(n => n > 0);
+    if (selectedSize && !(pantsStock[selectedSize] > 0)) selectedSize = null;
+  } catch {
+    pantsStock = null;
+    CONFIG.pants.soldSizes = [...CONFIG.pants.sizes];
+    selectedSize = null;
+  }
+  renderPantsSizes();
+  if (pantsStock && selectedSize) $$('.size').forEach(b => b.setAttribute('aria-checked', String(b.dataset.size === selectedSize)));
+  if (!pantsStock && $('#orderPantsBtn')) $('#orderPantsBtn').textContent = 'Не удалось проверить наличие';
+  renderCart(); rerenderCards();
+}
+function pantsLimit(size) { return pantsStock ? (pantsStock[size] || 0) : 0; }
 
 /* =====================================================================
    Каталог (карточки)
@@ -515,6 +548,9 @@ function addToCart(id, size = null) {
   const p = findProduct(id);
   if (!p) return;
   size = size || p.size || null;
+  if (id === 'pants' && cart.filter(i => i.id === id && i.size === size).reduce((n, i) => n + i.qty, 0) >= pantsLimit(size)) {
+    toast(pantsStock ? 'Больше нет в наличии' : 'Не удалось проверить наличие. Попробуйте ещё раз'); return;
+  }
   if (Array.isArray(p.soldSizes) && p.soldSizes.includes(size)) {
     toast(`Размер ${size} закончился`);
     return;
@@ -544,7 +580,7 @@ function renderCart() {
   list.innerHTML = cart.length ? cart.map((i, idx) => {
     const p = findProduct(i.id);
     const inCart = cart.filter(x => x.id === i.id).reduce((n, x) => n + x.qty, 0);
-    const maxed = p.stock && inCart >= p.stock;
+    const maxed = p.id === 'pants' ? i.qty >= pantsLimit(i.size) : p.stock && inCart >= p.stock;
     return `<li class="drawer__item">
       <img src="${imgOf(p)}" alt="" onerror="this.onerror=null;this.src='${PLACEHOLDERS[p.type]}'">
       <div>
@@ -582,6 +618,7 @@ function initCart() {
     if (q) {
       const item = cart[Number(q.dataset.idx)];
       if (!item) return;
+      if (q.disabled) return;
       item.qty += Number(q.dataset.qty);
       if (item.qty < 1) cart.splice(Number(q.dataset.idx), 1);
       saveCart();
@@ -974,6 +1011,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initHero();
   initHeroProduct();
   initSizes();
+  refreshPantsStock();
+  setInterval(refreshPantsStock, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPantsStock(); });
   initLayers();
   initCart();
   initCatalog();

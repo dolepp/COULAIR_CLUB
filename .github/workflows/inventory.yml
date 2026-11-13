@@ -1,0 +1,27 @@
+name: Проверка остатков и API
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Проверить JavaScript
+        run: |
+          for f in server/*.js js/*.js; do node --check "$f"; done
+      - name: Проверить остатки и запись продаж
+        run: node --test server/test/*.test.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coulair-api
+          path: |
+            server/*.js
+            server/package*.json
+            server/README.md
