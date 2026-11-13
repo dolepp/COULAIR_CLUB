@@ -3,7 +3,9 @@
    Секреты (ключи СДЭК, ЮKassa, почта, бот) — в файле .env, см. .env.example.
    Правила упаковки — ниже, в PACKAGING: их меняют руками.
    ===================================================================== */
+import { resolveCdekSettings } from './cdek-settings.js';
 const env = process.env;
+const cdekSettings = resolveCdekSettings(env);
 const bool = v => /^(1|true|yes|on)$/i.test(String(v || '').trim());
 const num = (v, d) => (v === undefined || v === '' ? d : Number(v));
 
@@ -16,9 +18,7 @@ export const config = {
   shopName: env.SHOP_NAME || 'Coulair Club',
 
   cdek: {
-    // Без ключей работает тестовый контур СДЭК (цены примерные)
-    account: env.CDEK_ACCOUNT || '',
-    secure: env.CDEK_SECURE || '',
+    ...cdekSettings,
     // Код города отправки в справочнике СДЭК (44 — Москва, 137 — Санкт-Петербург, 250 — Екатеринбург)
     fromCityCode: num(env.CDEK_FROM_CITY_CODE, 44),
     // 136 — Посылка склад-склад, 368 — Посылка склад-постамат.
@@ -37,7 +37,8 @@ export const config = {
     // table — своя таблица зон (расстояние от города отправки × вес), api — калькулятор СДЭК.
     // Без ключей СДЭК по умолчанию table: тестовый калькулятор даёт неверные цены и сроки.
     // lk — калькулятор сайта СДЭК (my.cdek.ru) без ключей: реальная цена до выбранного города, пакет А3.
-    calc: env.CDEK_CALC || '',
+    calc: env.CDEK_CALC || 'auto',
+    fallbackCalc: env.CDEK_FALLBACK_CALC || 'lk',
     // Если калькулятор СДЭК не ответил — таблица × этот множитель (чтобы не уйти в минус)
     lkFallbackFactor: num(env.CDEK_LK_FALLBACK_FACTOR, 2.6),
     // Какой тариф калькулятора брать: FAST (посылка), STANDARD (эконом, есть не везде), VERY_FAST

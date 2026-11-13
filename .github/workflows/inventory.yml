@@ -25,3 +25,5 @@ jobs:
             server/*.js
             server/package*.json
             server/README.md
+            server/CDEK_SETUP.md
+            server/cdek-credentials.example.json

@@ -7,3 +7,7 @@
 /catalog/
 /товары/*/исходники/
 __pycache__/
+
+# Рабочие секреты интеграций
+**/.env
+**/cdek-credentials.json

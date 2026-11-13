@@ -1,53 +1,16 @@
 /* СДЭК API v2: города, пункты выдачи и постаматы, расчёт стоимости */
 import { config } from './config.js';
 
-// Публичные ключи тестового контура из документации СДЭК
-const TEST = {
-  base: 'https://api.edu.cdek.ru/v2',
-  account: 'wqGwiQx0gg8mLtiEKsUinjVSICCjtTEP',
-  secure: 'RmAmgvSgSl1yirlz9QupbzOJVqhCxcP5',
-};
-const live = !!(config.cdek.account && config.cdek.secure);
-const API = live
-  ? { base: 'https://api.cdek.ru/v2', account: config.cdek.account, secure: config.cdek.secure }
-  : TEST;
-const calc = config.cdek.calc || (live ? 'api' : 'table');
-export const cdekMode = (live ? 'live' : 'test') + (calc === 'table' ? ' · таблица' : calc === 'lk' ? ' · калькулятор cdek.ru' : '');
-
-let token = null, tokenUntil = 0;
-async function auth() {
-  if (token && Date.now() < tokenUntil) return token;
-  const res = await fetch(API.base + '/oauth/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: API.account, client_secret: API.secure }),
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) throw new Error('СДЭК: авторизация ' + res.status);
-  const d = await res.json();
-  token = d.access_token;
-  tokenUntil = Date.now() + (d.expires_in - 60) * 1000;
-  return token;
-}
-
-async function api(method, path, body) {
-  const send = async () => fetch(API.base + path, {
-    method,
-    headers: { Authorization: 'Bearer ' + (await auth()), ...(body ? { 'Content-Type': 'application/json' } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(20000),
-  });
-  let res = await send();
-  if (res.status === 401) { token = null; res = await send(); }
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    const msg = data && data.errors ? data.errors.map(e => e.message).join('; ') : 'HTTP ' + res.status;
-    const err = new Error('СДЭК: ' + msg);
-    err.cdek = data;
-    throw err;
-  }
-  return data;
-}
+import { createCdekClient, CDEK_SANDBOX } from './cdek-client.js';
+const official = createCdekClient({ environment: config.cdek.environment, clientId: config.cdek.account,
+  clientSecret: config.cdek.secure, configurationError: config.cdek.configurationError });
+const publicCatalog = createCdekClient({ environment: 'sandbox', ...CDEK_SANDBOX });
+const live = official.status().configured && config.cdek.environment === 'production';
+const requested = config.cdek.calc;
+const calc = requested === 'auto' ? (live ? 'api' : config.cdek.fallbackCalc) : requested;
+export const cdekMode = (live ? 'live' : 'public') + (calc === 'table' ? ' · таблица' : calc === 'lk' ? ' · калькулятор cdek.ru' : ' · API');
+export const cdekConnectionStatus = () => ({ ...official.status(), calculator: calc, apiActive: live && calc === 'api' });
+const api = (method, route, body) => (live ? official : publicCatalog).api(method, route, body);
 
 // Простой кэш в памяти
 const cache = new Map();
@@ -280,6 +243,7 @@ async function lkTariffs(cityCode, packages) {
 
 // Стоимость до ПВЗ и до постамата для города; null — этот вариант недоступен
 export async function quote(cityCode, packages) {
+  if (calc === 'api' && !live) throw new Error('СДЭК: для боевого API заполните ключи подключения');
   const key = 'quote:' + cityCode + ':' + JSON.stringify(packages.map(p => [p.weight, p.length, p.width, p.height]));
   return cached(key, 30 * 60e3, async () => {
     if (calc === 'lk') {
@@ -298,15 +262,12 @@ export async function quote(cityCode, packages) {
         if (price > 0) out[type] = { ...out[type], cost: price, fixed: true };
       return out;
     }
+    if (!live) throw new Error('СДЭК: боевой API ещё не подключён');
     const out = {};
-    const flatOnly = !live && Object.values(config.cdek.flat).every(p => p > 0);
-    // без ключей и с фиксированной ценой тестовый калькулятор не нужен — его сроки и цены неверны
-    if (!flatOnly) await Promise.all(Object.entries(config.cdek.tariffs).map(async ([type, code]) => {
+    await Promise.all(Object.entries(config.cdek.tariffs).map(async ([type, code]) => {
       try { out[type] = await tariff(code, cityCode, packages); }
       catch (e) { out[type] = null; if (live) console.warn('[cdek] тариф', code, 'город', cityCode, '—', e.message); }
     }));
-    // тестовый контур не знает постаматов — без ключей считаем постамат по цене пункта выдачи
-    if (!live && !out.POSTAMAT && out.PVZ) out.POSTAMAT = { ...out.PVZ, tariff: config.cdek.tariffs.POSTAMAT };
     // фиксированная цена доставки из .env перекрывает расчёт
     for (const [type, price] of Object.entries(config.cdek.flat)) {
       if (price <= 0) continue;

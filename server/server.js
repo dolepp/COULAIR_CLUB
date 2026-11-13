@@ -8,7 +8,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from './config.js';
 import { normalizeItems, buildPackages, BadRequest } from './products.js';
-import { suggestCities, deliveryPoints, quote, cdekMode } from './cdek.js';
+import { suggestCities, deliveryPoints, quote, cdekMode, cdekConnectionStatus } from './cdek.js';
 import { createPayment, getPayment, yookassaReady } from './yookassa.js';
 import { findPromo, applyPromo, markPromoUsed } from './promo.js';
 import { createOrder, getOrder, saveOrder, listUnnotifiedOrders, listOrdersWithMailErrors, listOrders } from './store.js';
@@ -205,7 +205,7 @@ function publicOrder(o) {
 const routes = {
   'GET /api/stock': async () => availability(),
 
-  'GET /api/health': async () => ({ ok: true, cdek: cdekMode, yookassa: yookassaReady() }),
+  'GET /api/health': async () => ({ ok: true, cdek: cdekMode, cdekApi: cdekConnectionStatus(), yookassa: yookassaReady() }),
 
   'GET /api/cdek/cities': async (req, url) => {
     if (limited(req, 'geo', 120)) return [429, { error: 'Слишком много запросов' }];
