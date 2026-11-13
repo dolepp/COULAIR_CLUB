@@ -57,3 +57,12 @@ test('Файл ключей: закрытая конфигурация, непо
   const bad=resolveCdekSettings({CDEK_CREDENTIALS_FILE:file});assert.equal(bad.configurationError,'credentials_file_invalid_or_missing');assert.equal(bad.secure,'');
   assert.equal(resolveCdekSettings({CDEK_ENV:'invalid'}).configurationError,'invalid_environment');
 });
+
+test('Боевой расчёт API без ключей блокируется до обращения к учебному серверу',async()=>{
+  process.env.CDEK_CALC='api';process.env.CDEK_ENV='production';
+  for(const k of ['CDEK_CLIENT_ID','CDEK_CLIENT_SECRET','CDEK_ACCOUNT','CDEK_SECURE','CDEK_CREDENTIALS_FILE']) delete process.env[k];
+  let called=false;globalThis.fetch=async()=>{called=true;throw new Error('must not call sandbox');};
+  const {quote}=await import('../cdek.js');
+  await assert.rejects(quote(250,[{weight:950,length:35,width:30,height:5}]),/боевого API/);
+  assert.equal(called,false);
+});
