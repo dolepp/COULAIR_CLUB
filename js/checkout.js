@@ -73,11 +73,11 @@
                 <input name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="+7 (___) ___-__-__"></label>
               <label class="field"><span>Электронная почта *</span>
                 <input name="email" type="email" autocomplete="email" inputmode="email" placeholder="name@mail.ru" required aria-required="true"
-                  title="Обязательно: на эту почту придёт подтверждение предзаказа"></label>
+                  title="Обязательно: на эту почту придёт подтверждение заказа"></label>
               <label class="field co-grid__full"><span>Telegram</span>
                 <input name="telegram" type="text" autocomplete="off" placeholder="@username"></label>
               <label class="check co-grid__full"><input type="checkbox" name="noTelegram"><span>Нет Telegram</span></label>
-              <p class="co-note co-grid__full">На электронную почту придёт подтверждение предзаказа с составом заказа и адресом доставки.</p>
+              <p class="co-note co-grid__full">На электронную почту придёт подтверждение заказа с составом заказа и адресом доставки.</p>
             </div>
           </section>
 
