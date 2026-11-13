@@ -52,7 +52,7 @@ export function normalizeItems(raw, { managedPants = false } = {}) {
       if (!(managedPants && p.id === 'pants') && Array.isArray(p.soldSizes) && p.soldSizes.includes(size)) {
         throw new BadRequest(`Размер ${size} у «${p.name}» закончился`);
       }
-      if (!(managedPants && p.id === 'pants' ? [...p.sizes, ...(p.soldSizes || [])] : p.sizes).includes(size)) throw new BadRequest(`Выберите размер для «${p.name}»`);
+      if (!(managedPants && p.id === 'pants' ? /^[A-Z0-9-]{1,8}$/.test(size) : p.sizes.includes(size))) throw new BadRequest(`Выберите размер для «${p.name}»`);
     }
     const k = p.id + '|' + (size || '');
     const line = lines.get(k) || {

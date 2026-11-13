@@ -38,11 +38,13 @@ export function parseBatches(rows) {
   const batches = [];
   for (const [i, r] of rows.entries()) {
     if (!String(r[0] || '').trim() || !String(r[1] || '').trim()) continue;
+    const size = String(r[1]).trim().toUpperCase();
+    if (!/^[A-Z0-9-]{1,8}$/.test(size)) throw new Error('Некорректный размер в строке ' + (i + 5));
     const remaining = Number(r[4]);
     if (r[4] === '' || r[4] == null || !Number.isFinite(remaining) || !Number.isInteger(remaining)) {
       throw new Error('Некорректный остаток в строке ' + (i + 5));
     }
-    batches.push({ batch: String(r[0]).trim(), size: String(r[1]).trim().toUpperCase(), remaining, row: i + 5 });
+    batches.push({ batch: String(r[0]).trim(), size, remaining, row: i + 5 });
   }
   if (!batches.length) throw new Error('В таблице нет партий');
   return batches;
@@ -146,7 +148,10 @@ export async function syncSale(order) {
     const last = s.rows.reduce((last, r, i) => r[2] !== '' && r[2] != null ? i + 9 : last, 8);
     const data = saleRows(order, last + 1, s.keys);
     if (data.length) {
-      await api('/values:batchUpdate', { valueInputOption: 'USER_ENTERED', data });
+      const separator = process.env.SHEETS_FORMULA_SEPARATOR || ',';
+      const formatted = data.map(r => ({ ...r, values: r.values.map(row => row.map(v =>
+        typeof v === 'string' && v.startsWith('=') ? v.replaceAll(',', separator) : v)) }));
+      await api('/values:batchUpdate', { valueInputOption: 'USER_ENTERED', data: formatted });
       cache = null;
     }
     // Берём свежий объект: запись в таблицу не должна затирать статусы уведомлений.
