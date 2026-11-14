@@ -40,6 +40,19 @@ jobs:
       - name: Версии файлов (чтобы браузеры не держали старые копии)
         run: python tools/stamp_assets.py _site
 
+      - name: Сохранить файлы кода для обновления сайта без копирования медиатеки
+        uses: actions/upload-artifact@v4
+        with:
+          name: coulair-site-code
+          include-hidden-files: true
+          path: |
+            _site/**/*.html
+            _site/js/*.js
+            _site/css/*.css
+            _site/catalog/catalog.js
+            _site/CNAME
+            _site/.nojekyll
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
