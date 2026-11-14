@@ -315,8 +315,8 @@ function renderPantsSizes() {
   const order = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
   const sizes = [...new Set([...P.sizes, ...(P.soldSizes || [])])].sort((a,b) => order.indexOf(a) - order.indexOf(b));
   $('#sizeList').innerHTML = sizes.map(z => {
-    const sold = !(pantsStock?.[z] > 0), offer = pantsStockData?.colors?.[selectedColor]?.offers?.[z];
-    return `<button class="size${sold ? ' is-sold' : offer?.preorder ? ' is-preorder' : ''}" role="radio" aria-checked="${selectedSize === z}"${sold ? ' aria-disabled="true" disabled' : ''} data-size="${escapeHtml(z)}"><span>${escapeHtml(z)}</span>${sold ? '<small>Нет в наличии</small>' : offer?.preorder ? '<small>Предзаказ</small>' : ''}</button>`;
+    const sold = !(pantsStock?.[z] > 0);
+    return `<button class="size${sold ? ' is-sold' : ''}" role="radio" aria-checked="${selectedSize === z}"${sold ? ' aria-disabled="true" disabled' : ''} data-size="${escapeHtml(z)}"><span>${escapeHtml(z)}</span>${sold ? '<small>Нет в наличии</small>' : ''}</button>`;
   }).join('');
   $$('#sizeList .size:not(.is-sold)').forEach(btn => btn.addEventListener('click', () => {
     selectedSize = btn.dataset.size;
