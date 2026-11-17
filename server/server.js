@@ -1,7 +1,7 @@
 /* Coulair API: /api/… за nginx.
    Корзина → расчёт СДЭК → заказ → платёж ЮKassa → (webhook) письмо клиенту + заявка в Telegram */
 import http from 'node:http';
-import { deliveryPrice } from './shipping.js';
+import { deliveryPaymentPlan, deliveryOnlineCharge } from './shipping.js';
 import { attachFulfillment } from './fulfillment.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -82,14 +82,14 @@ function cleanContact(c = {}) {
 }
 
 /* ---------- расчёт корзины и доставки ---------- */
-const fulfillmentKey = (items, discountPercent) => crypto.createHash('sha256').update(JSON.stringify({ shippingPolicy: 'half-price-v1', discountPercent, items: items.map(i => ({ id: i.id, size: i.size, color: i.color, qty: i.qty, fulfillment: i.fulfillment })) })).digest('hex');
+const fulfillmentKey = (items, discountPercent) => crypto.createHash('sha256').update(JSON.stringify({ shippingPolicy: 'on-receipt-v1', discountPercent, items: items.map(i => ({ id: i.id, size: i.size, color: i.color, qty: i.qty, fulfillment: i.fulfillment })) })).digest('hex');
 async function calc(items, cityCode) {
   const cart = normalizeItems(items, { managedPants: sheetsEnabled() });
   attachFulfillment(cart.items, await checkStock(cart.items));
   const packages = buildPackages(cart.items);
   const delivery = cityCode ? await quote(cityCode, packages) : null;
   if (delivery) for (const q of Object.values(delivery)) {
-    if (q && Number.isFinite(q.cost)) q.customerCost = deliveryPrice(q.cost, cart.deliveryDiscountPercent);
+    if (q && Number.isFinite(q.cost)) Object.assign(q, deliveryPaymentPlan(q.cost, cart.deliveryDiscountPercent));
   }
   return { ...cart, packages, delivery };
 }
@@ -195,7 +195,7 @@ function publicOrder(o) {
     goods: o.goods, total: o.total, promo: o.promo ? { code: o.promo.code, discount: o.promo.discount } : null, fromCart: !!o.fromCart, email: o.contact.email,
     delivery: {
       type: o.delivery.point.type, city: o.delivery.cityName, address: o.delivery.point.address,
-      cost: o.delivery.customerCost, discountPercent: o.delivery.discountPercent || 0, originalCost: o.delivery.cdekCost, daysMin: o.delivery.daysMin, daysMax: o.delivery.daysMax,
+      cost: o.delivery.customerCost, paymentMethod: o.delivery.paymentMethod || 'prepaid', onlineCost: deliveryOnlineCharge(o.delivery), discountPercent: o.delivery.discountPercent || 0, originalCost: o.delivery.cdekCost, daysMin: o.delivery.daysMin, daysMax: o.delivery.daysMax,
     },
     paymentUrl: o.status === 'pending' && o.payment ? o.payment.url : null,
   };
@@ -254,10 +254,10 @@ const routes = {
     const q = r.delivery && r.delivery[point.type];
     if (!q) throw new BadRequest(point.type === 'POSTAMAT' ? 'В постамат этот заказ не доставить — выберите пункт выдачи' : 'СДЭК не доставляет в этот пункт — выберите другой');
 
-    const customerCost = deliveryPrice(q.cost, r.deliveryDiscountPercent);
+    const deliveryPayment = deliveryPaymentPlan(q.cost, r.deliveryDiscountPercent);
     const promo = findPromo(body.promo);
     if (promo && promo.error) throw new BadRequest(promo.error);
-    const sum = applyPromo(promo, r.goods, customerCost);
+    const sum = applyPromo(promo, r.goods, deliveryOnlineCharge(deliveryPayment));
     const order = await reserveOrder(r.items, allocations => {
       attachFulfillment(r.items, allocations);
       if (!body.availabilityKey || body.availabilityKey !== fulfillmentKey(r.items, r.deliveryDiscountPercent)) throw new BadRequest('Условия заказа изменились: проверьте обновлённый расчёт и подтвердите заказ ещё раз');
@@ -270,7 +270,7 @@ const routes = {
         cityCode, cityName: point.city || String(body.cityName || '').slice(0, 100),
         point: { code: point.code, type: point.type, name: point.name, address: point.address, workTime: point.workTime },
         tariff: q.tariff, cdekCost: q.cost, fixed: !!q.fixed, daysMin: q.daysMin, daysMax: q.daysMax,
-        free: false, discountPercent: r.deliveryDiscountPercent, customerCost,
+        free: false, discountPercent: r.deliveryDiscountPercent, ...deliveryPayment,
       },
       total: sum.total,
       ...(promo ? { promo: { code: promo.code, kind: promo.kind, value: promo.value, discount: sum.discount } } : {}),

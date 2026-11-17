@@ -117,7 +117,7 @@
             <span>Я подтверждаю согласие с условиями <a href="privacy/" target="_blank">политики конфиденциальности</a>
               и <a href="offer/" target="_blank">договора оферты</a></span></label>
           <p class="form__error" id="coError" hidden></p>
-          <button class="btn btn--dark btn--wide co-pay" type="submit" id="coPay">Перейти к оплате</button>
+          <button class="btn btn--dark btn--wide co-pay" type="submit" id="coPay">Оплатить товары</button>
           <p class="co-secure"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
             Оплата картой, через СБП или SberPay на защищённой странице ЮKassa</p>
         </form>
@@ -159,7 +159,7 @@
     const discountPercent = st.quote ? st.quote.deliveryDiscountPercent || 0 : 0;
     const q = st.point && deliveryOf(st.point.type);
     const ship = q ? shippingCost(q) : null;
-    const full = goods + (ship || 0);
+    const full = goods; // Доставка оплачивается отдельно при получении.
     const p = st.promo;
     let total = full;
     if (p) {
@@ -196,11 +196,12 @@
       : `${rub(t.ship)}${t.discountPercent && t.q ? ` <s>${rub(t.q.cost)}</s>` : ''}`;
     $('#coTotal').innerHTML = `
       <div class="co-total__row"><span>Товары</span><span>${rub(t.goods)}</span></div>
-      <div class="co-total__row"><span>${t.q ? withDays('Доставка СДЭК', t.q) : 'Доставка СДЭК'}</span><span>${shipText}</span></div>
+      <div class="co-total__row"><span>${t.q ? withDays('Доставка СДЭК', t.q) : 'Доставка СДЭК'}<br><small>Оплата доставки при получении</small></span><span>${shipText}</span></div>
+      <div class="co-note">Доставка не входит в сумму оплаты на сайте.</div>
       ${t.discountPercent ? '<div class="co-total__promo">От 2 позиций — скидка 50% на доставку</div>' : ''}
       ${t.discount ? `<div class="co-total__row"><span>Промокод ${escapeHtml(st.promo.code)}</span><span>−${rub(t.discount)}</span></div>` : ''}
-      <div class="co-total__row co-total__sum"><span>Итого</span><span>${rub(t.total)}</span></div>`;
-    $('#coPay').textContent = st.point ? `Перейти к оплате · ${rub(t.total)}` : 'Перейти к оплате';
+      <div class="co-total__row co-total__sum"><span>К оплате на сайте за товары</span><span>${rub(t.total)}</span></div>`;
+    $('#coPay').textContent = st.point ? `Оплатить товары · ${rub(t.total)}` : 'Оплатить товары';
   }
 
   async function refreshQuote() {
@@ -389,7 +390,7 @@
         <span class="co-point__type" style="--c:${TYPES[p.type].color}">${TYPES[p.type].label}</span>
         <span class="co-point__addr">${escapeHtml(p.address)}</span>
         <span class="co-point__meta">${escapeHtml(p.workTime)}${p.metro ? ' · м. ' + escapeHtml(p.metro) : ''}</span>
-        ${q2 ? `<span class="co-point__price">${withDays(rub(shippingCost(q2)), q2)}</span>` : ''}
+        ${q2 ? `<span class="co-point__price">${withDays(rub(shippingCost(q2)), q2)} · при получении</span>` : ''}
       </button></li>`;
     }).join('') + (list.length > LIST_LIMIT ? `<li class="co-points__empty">И ещё ${list.length - LIST_LIMIT} — приблизьте карту или воспользуйтесь поиском</li>` : '')
       : `<li class="co-points__empty">${q ? 'Ничего не нашли — попробуйте другой адрес' : 'В этой части карты пунктов нет — отдалите карту'}</li>`;
@@ -408,7 +409,7 @@
       <p class="co-chosen__addr">${escapeHtml(st.city.name)}, ${escapeHtml(p.address)}</p>
       ${p.workTime ? `<p class="co-chosen__meta">${escapeHtml(p.workTime)}</p>` : ''}
       ${p.note ? `<p class="co-chosen__meta">${escapeHtml(p.note)}</p>` : ''}
-      ${q ? `<p class="co-chosen__price">${withDays(rub(shippingCost(q)), q)}${days(q) ? ' после отправки' : ''}</p>` : ''}`;
+      ${q ? `<p class="co-chosen__price">${withDays(rub(shippingCost(q)), q)}${days(q) ? ' после отправки' : ''}<br>Оплата доставки при получении</p>` : ''}`;
     $('#coChosen').hidden = false;
     $('#coPicker').hidden = true;
     $('#coTabs').hidden = true;

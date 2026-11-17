@@ -1,6 +1,7 @@
 /* Google Sheets — остатки по партиям и оплаченные продажи.
    Один процесс API: очередь объединяет чтение, резерв и запись без гонок. */
 import fs from 'node:fs';
+import { deliveryStoreExpense } from './shipping.js';
 import { normalizeColor } from './fulfillment.js';
 import { BadRequest } from './products.js';
 import { listOrders, getOrder, saveOrder } from './store.js';
@@ -152,11 +153,11 @@ export function saleRows(order, firstRow, existingKeys) {
     // Оплата распределяется поштучно: сумма строк точно равна сумме платежа.
     return [{ range: `'Заказы'!A${n}:Q${n}`, values: [[
       `=IF(C${n}="","",COUNTA($C$9:C${n}))`, date, splitCents(order.total, units.length, i),
-      splitCents(order.delivery.cdekCost || 0, units.length, i), 'ЮKassa', 'Ждёт',
+      splitCents(deliveryStoreExpense(order.delivery), units.length, i), 'ЮKassa', 'Ждёт',
       `=IF(OR(C${n}="",E${n}<>"ЮKassa"),"",C${n}*$C$5)`,
       it.id === 'pants' ? `=IF(C${n}="","",C${n}-$C$4-N(D${n})-N(G${n}))` : '',
-      `Сайт, заказ №${order.id}; ${it.name}`, order.delivery.cityName || '', it.size || '',
-      a?.batch || '', order.delivery.customerCost > 0 ? 'Оплачена' : 'Не оплачена',
+      `Сайт, заказ №${order.id}; ${it.name}${order.delivery.paymentMethod === 'on_receipt' ? '; доставка оплачивается при получении' : ''}`, order.delivery.cityName || '', it.size || '',
+      a?.batch || '', order.delivery.paymentMethod === 'on_receipt' ? 'Не оплачена' : order.delivery.customerCost > 0 ? 'Оплачена' : 'Не оплачена',
       it.id === 'pants' ? 'штаны' : it.name, it.id === 'pants' ? normalizeColor(it.color) : '', key,
       a ? `${a.preorder ? 'Предзаказ · ' : ''}Отправка ${a.dispatchLabel}` : '',
     ]] }];

@@ -52,9 +52,9 @@
             <strong>${rub(i.price * i.qty)}</strong></li>`).join('')}</ul>
         <div class="co-total">
           <div class="co-total__row"><span>Товары</span><span>${rub(o.goods)}</span></div>
-          <div class="co-total__row"><span>Доставка СДЭК${d.discountPercent ? ` · скидка ${d.discountPercent}%` : ''}</span><span>${d.cost ? rub(d.cost) : '<span class="co-free">Бесплатно</span>'}${d.discountPercent ? ` <s>${rub(d.originalCost)}</s>` : ''}</span></div>
+          <div class="co-total__row"><span>Доставка СДЭК${d.paymentMethod === 'on_receipt' ? ' — оплата при получении' : ''}${d.discountPercent ? ` · скидка ${d.discountPercent}%` : ''}</span><span>${d.cost ? rub(d.cost) : '<span class="co-free">Бесплатно</span>'}${d.discountPercent ? ` <s>${rub(d.originalCost)}</s>` : ''}</span></div>
           ${o.promo ? `<div class="co-total__row"><span>Промокод ${esc(o.promo.code)}</span><span>−${rub(o.promo.discount)}</span></div>` : ''}
-          <div class="co-total__row co-total__sum"><span>${o.status === 'paid' ? 'Оплачено' : 'К оплате'}</span><span>${rub(o.total)}</span></div>
+          <div class="co-total__row co-total__sum"><span>${o.status === 'paid' ? 'Оплачено' : 'К оплате'}${d.paymentMethod === 'on_receipt' ? ' на сайте за товары' : ''}</span><span>${rub(o.total)}</span></div>
         </div>
         <p class="order-card__ship"><strong>${TYPE[d.type] || 'СДЭК'}</strong>${esc(d.city)}, ${esc(d.address)}<br>
           ${d.daysMin ? `<span class="co-muted">Срок после отправки: ${days} дн.</span>` : ''}</p>`;

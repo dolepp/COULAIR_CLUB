@@ -36,3 +36,29 @@ test('Одна пара: полная доставка; от двух: поло�
   assert.equal(delivery.amount.value,'500.00');
   assert.equal(body.receipt.items.reduce((s,i)=>s+Number(i.amount.value)*Number(i.quantity),0),16280);
 });
+
+test('Новый заказ: доставка при получении, онлайн-платёж и чек только за товары',async()=>{
+  const {deliveryPaymentPlan,deliveryOnlineCharge,deliveryStoreExpense}=await import('../shipping.js');
+  const cart=normalizeItems([{id:'pants',size:'M',qty:2}],{managedPants:true});
+  const plan=deliveryPaymentPlan(1000,cart.deliveryDiscountPercent);
+  assert.equal(plan.customerCost,500);assert.equal(deliveryOnlineCharge(plan),0);
+  assert.equal(deliveryStoreExpense({...plan,cdekCost:1000}),500);
+  assert.equal(deliveryStoreExpense({...deliveryPaymentPlan(1000,0),cdekCost:1000}),0);
+  const sum=applyPromo(null,cart.goods,deliveryOnlineCharge(plan));assert.equal(sum.total,15780);
+  assert.equal(applyPromo({kind:'percent',value:10},cart.goods,deliveryOnlineCharge(plan)).total,14202);
+  const order={id:'cod',token:'test',total:sum.total,goods:cart.goods,paidAt:new Date().toISOString(),items:cart.items,
+    contact:{name:'Тест',email:'test@example.com',phone:'+79000000000'},
+    delivery:{...plan,cdekCost:1000,cityName:'Тест',point:{type:'PVZ',address:'Тест',code:'test'}},
+    inventoryAllocations:[0,1].map(unit=>({itemIndex:0,unit,key:`site:cod:0:${unit}`,batch:'Партия 1',size:'M',color:'черный',dispatchLabel:'в течение 10 рабочих дней',preorder:false}))};
+  let body;globalThis.fetch=async(url,options)=>{body=JSON.parse(options.body);return {ok:true,json:async()=>({id:'test',status:'pending'})};};
+  await createPayment(order);
+  assert.equal(body.amount.value,'15780.00');
+  assert.ok(body.receipt.items.every(i=>i.description!=='Доставка СДЭК'));
+  assert.equal(body.receipt.items.reduce((s,i)=>s+Number(i.amount.value)*Number(i.quantity),0),15780);
+  const {saleRows}=await import('../sheets.js');const rows=saleRows(order,40,new Set()).map(r=>r.values[0]);
+  assert.equal(rows.reduce((s,r)=>s+r[2],0),15780);
+  assert.equal(rows.reduce((s,r)=>s+r[3],0),500);
+  assert.ok(rows.every(r=>r[12]==='Не оплачена' && r[8].includes('при получении')));
+  const {orderEmail}=await import('../email.js');const mail=orderEmail(order);
+  assert.match(mail.text,/оплата при получении/);assert.match(mail.html,/Оплачено на сайте за товары/);
+});

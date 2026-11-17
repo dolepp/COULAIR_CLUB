@@ -1,5 +1,6 @@
 /* ЮKassa API v3: создание платежа и проверка статуса */
 import crypto from 'node:crypto';
+import { deliveryOnlineCharge } from './shipping.js';
 import { config } from './config.js';
 
 const BASE = 'https://api.yookassa.ru/v3';
@@ -33,11 +34,12 @@ function receipt(order) {
     payment_mode: Y.paymentMode,
     payment_subject: 'commodity',
   }));
-  if (order.delivery.customerCost > 0) {
+  const shippingCharge = deliveryOnlineCharge(order.delivery);
+  if (shippingCharge > 0) {
     items.push({
       description: 'Доставка СДЭК',
       quantity: '1.00',
-      amount: money(order.delivery.customerCost),
+      amount: money(shippingCharge),
       vat_code: Y.vatCode,
       payment_mode: Y.paymentMode,
       payment_subject: 'service',
