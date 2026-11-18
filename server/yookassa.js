@@ -78,3 +78,13 @@ export async function createPayment(order) {
 }
 
 export const getPayment = id => api('GET', '/payments/' + encodeURIComponent(id));
+
+export function matchesOrderPayment(order, payment) {
+  const amount = payment.amount?.value;
+  return typeof payment.id === 'string' && payment.id === order.payment?.id
+    && payment.metadata?.order_id === order.id
+    && payment.amount?.currency === 'RUB'
+    && typeof amount === 'string' && /^[0-9]+\.[0-9]{2}$/.test(amount)
+    && Number.isFinite(order.total) && order.total > 0
+    && Number(amount) === order.total;
+}

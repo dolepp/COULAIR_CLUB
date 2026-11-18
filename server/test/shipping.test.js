@@ -62,3 +62,16 @@ test('Новый заказ: доставка при получении, онл�
   const {orderEmail}=await import('../email.js');const mail=orderEmail(order);
   assert.match(mail.text,/оплата при получении/);assert.match(mail.html,/Оплачено на сайте за товары/);
 });
+
+test('Подтверждение связано с конкретным платежом, валютой и суммой заказа', async () => {
+  const { matchesOrderPayment } = await import('../yookassa.js');
+  const order = { id: '1234', payment: { id: 'payment-1' }, total: 7890 };
+  const payment = { id: 'payment-1', metadata: { order_id: '1234' }, amount: { value: '7890.00', currency: 'RUB' } };
+  assert.equal(matchesOrderPayment(order, payment), true);
+  assert.equal(matchesOrderPayment(order, { ...payment, id: 'payment-2' }), false);
+  assert.equal(matchesOrderPayment(order, { ...payment, metadata: { order_id: '1235' } }), false);
+  assert.equal(matchesOrderPayment(order, { ...payment, amount: { ...payment.amount, currency: 'USD' } }), false);
+  for (const value of ['7890.01', 'NaN', 'Infinity', '', null]) {
+    assert.equal(matchesOrderPayment(order, { ...payment, amount: { ...payment.amount, value } }), false);
+  }
+});

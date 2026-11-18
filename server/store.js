@@ -9,8 +9,8 @@ fs.mkdirSync(dir, { recursive: true });
 const counterFile = path.join(config.dataDir, 'counter.txt');
 
 function writeAtomic(file, text) {
-  const tmp = file + '.' + process.pid + '.tmp';
-  fs.writeFileSync(tmp, text);
+  const tmp = file + '.' + crypto.randomUUID() + '.tmp';
+  fs.writeFileSync(tmp, text, { mode: 0o600, flag: 'wx' });
   fs.renameSync(tmp, file);
 }
 
@@ -64,12 +64,12 @@ export function listUnnotifiedOrders() {
   }
 }
 
-/* Оплаченные заказы, по которым письмо не ушло из-за ошибки */
-export function listOrdersWithMailErrors() {
+/* Оплаченные заказы без отметки об отправке письма */
+export function listOrdersNeedingMail() {
   try {
     return fs.readdirSync(dir).filter(f => f.endsWith('.json')).map(f => {
       try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { return null; }
-    }).filter(o => o && o.status === 'paid' && o.notified && (o.notified.emailError || o.notified.adminEmailError));
+    }).filter(o => o && o.status === 'paid' && (!o.notified?.email || !o.notified?.adminEmail));
   } catch {
     return [];
   }

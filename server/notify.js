@@ -142,11 +142,11 @@ async function sendMail({ to, subject, html, text, key }) {
     for (const [i, api] of apis.entries()) {
       try {
         const r = await sendViaApi(api, payload);
-        if (i > 0) console.warn(`[mail] ${key} → ${to}: отправлено через запасной ${api.url} (${r})`);
+        if (i > 0) console.warn(`[mail] ${key}: отправлено через запасной ${api.url} (${r})`);
         return r;
       } catch (err) {
         lastErr = err;
-        console.warn(`[mail] ${key} → ${to}: ${err.message}`);
+        console.warn(`[mail] ${key}: ${err.message}`);
         if (!err.retryElsewhere) break;
       }
     }

@@ -373,7 +373,7 @@ function cardHtml(p) {
     <article class="card${p.sold ? ' card--sold' : ''}" id="card-${p.id}">
       <a class="card__main" href="${fixUrl(p.url || './')}">
         <div class="card__media${photo ? ' card__media--photo' : ''}${p.fit === 'contain' ? ' card__media--contain' : ''}">
-          <img src="${imgOf(p)}" alt="${escapeHtml(p.name)}" loading="lazy" onerror="this.onerror=null;this.src='${PLACEHOLDERS[p.type] || PLACEHOLDERS.helmet}'">
+          <img src="${imgOf(p)}" alt="${escapeHtml(p.name)}" loading="lazy" data-image-fallback="${PLACEHOLDERS[p.type] || PLACEHOLDERS.helmet}">
           ${img2}${sale}${badge}
         </div>
         <div class="card__body">
@@ -607,7 +607,7 @@ function renderCart() {
     const inCart = cart.filter(x => x.id === i.id).reduce((n, x) => n + x.qty, 0);
     const maxed = p.id === 'pants' ? i.qty >= pantsLimit(i.size, i.color) : p.stock && inCart >= p.stock;
     return `<li class="drawer__item">
-      <img src="${imgOf(p, i.color)}" alt="" onerror="this.onerror=null;this.src='${PLACEHOLDERS[p.type]}'">
+      <img src="${imgOf(p, i.color)}" alt="" data-image-fallback="${PLACEHOLDERS[p.type]}">
       <div>
         <p class="drawer__item-name">${escapeHtml(p.name)}</p>
         <p class="drawer__item-meta">${i.id === 'pants' ? pantsColorLabel(i.color) + ' · ' : ''}${i.size ? 'Размер ' + escapeHtml(i.size) + ' · ' : ''}${rub(p.price * i.qty)}</p>
@@ -764,7 +764,7 @@ function initSearch() {
     const found = allProducts().filter(p => (p.name + ' ' + (p.brand || '')).toLowerCase().includes(q) || (keywords[p.type] || '').includes(q));
     results.innerHTML = found.length
       ? found.map(p => `<li><button class="search__result" data-go="${p.id}">
-          <img src="${imgOf(p)}" alt="" onerror="this.onerror=null;this.src='${PLACEHOLDERS[p.type]}'">
+          <img src="${imgOf(p)}" alt="" data-image-fallback="${PLACEHOLDERS[p.type]}">
           <span>${escapeHtml(p.name)}</span><small>${p.price ? rub(p.price) : ''}</small></button></li>`).join('')
       : '<li class="search__none">Ничего не нашли — напишите нам, подберём</li>';
   };
@@ -1052,3 +1052,12 @@ document.addEventListener('DOMContentLoaded', () => {
   initGame();
   fixLocalLinks();
 });
+
+// Fallback для изображений, в том числе добавленных при обновлении корзины.
+document.addEventListener('error', event => {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement) || !image.dataset.imageFallback) return;
+  const fallback = image.dataset.imageFallback;
+  delete image.dataset.imageFallback;
+  image.src = fallback;
+}, true);

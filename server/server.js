@@ -9,9 +9,9 @@ import crypto from 'node:crypto';
 import { config } from './config.js';
 import { normalizeItems, buildPackages, BadRequest } from './products.js';
 import { suggestCities, deliveryPoints, quote, cdekMode, cdekConnectionStatus } from './cdek.js';
-import { createPayment, getPayment, yookassaReady } from './yookassa.js';
+import { createPayment, getPayment, yookassaReady, matchesOrderPayment } from './yookassa.js';
 import { findPromo, applyPromo, markPromoUsed } from './promo.js';
-import { createOrder, getOrder, saveOrder, listUnnotifiedOrders, listOrdersWithMailErrors, listOrders } from './store.js';
+import { createOrder, getOrder, saveOrder, listUnnotifiedOrders, listOrdersNeedingMail, listOrders } from './store.js';
 import { telegramText, sendTelegram, sendOrderEmail, sendAdminEmails } from './notify.js';
 
 import { sheetsEnabled, availability, checkStock, reserveOrder, identifyAllocations, syncSale } from './sheets.js';
@@ -106,8 +106,12 @@ async function applyPayment(order, payment) {
   busy.add(order.id);
   try {
     order = getOrder(order.id) || order;            // свежая версия с диска
+    if (!matchesOrderPayment(order, payment)) {
+      console.warn('[payment] Реквизиты платежа не совпадают с заказом', order.id);
+      return order;
+    }
     if (order.status === 'paid') {
-      await recordSale(order);
+      if (!order.sheetSyncedAt) await recordSale(order);
       if (!order.notified || !order.notified.telegram) {
         try {
           order.notified = order.notified || {};
@@ -124,14 +128,6 @@ async function applyPayment(order, payment) {
     order.payment = { ...order.payment, id: payment.id, status: payment.status };
 
     if (payment.status === 'succeeded') {
-      const paid = Number(payment.amount && payment.amount.value);
-      if (Math.abs(paid - order.total) > 0.009 || String(payment.metadata && payment.metadata.order_id) !== order.id) {
-        console.error('[order]', order.id, 'сумма или номер не совпадают с платежом', payment.id);
-        order.status = 'mismatch';
-        saveOrder(order);
-        await sendTelegram(`⚠️ Заказ №${order.id}: платёж ${payment.id} не совпал по сумме (${paid} ≠ ${order.total}). Проверьте вручную.`).catch(() => {});
-        return order;
-      }
       order.status = 'paid';
       order.paidAt = payment.captured_at || new Date().toISOString();
       order.notified = order.notified || {};
@@ -171,7 +167,7 @@ async function recordSale(order) {
 async function sendOrderMails(order, alertOnFail) {
   order.notified = order.notified || {};
   if (!order.notified.email) {
-    try { order.notified.email = await sendOrderEmail(order); delete order.notified.emailError; }
+    try { order.notified.email = await sendOrderEmail(order); delete order.notified.emailError; saveOrder(order); }
     catch (e) {
       console.error('[order]', order.id, 'письмо клиенту:', e.message);
       order.notified.emailError = e.message;
@@ -283,7 +279,9 @@ const routes = {
     });
 
     if (FAKE_PAYMENT) {
-      await applyPayment(order, { id: 'fake-' + order.id, status: 'succeeded', amount: { value: order.total.toFixed(2) }, metadata: { order_id: order.id } });
+      order.payment = { id: 'fake-' + order.id };
+      saveOrder(order);
+      await applyPayment(order, { id: order.payment.id, status: 'succeeded', amount: { value: order.total.toFixed(2), currency: 'RUB' }, metadata: { order_id: order.id } });
       return { id: order.id, paymentUrl: `/order/?id=${order.id}&t=${order.token}` };
     }
 
@@ -314,12 +312,16 @@ const routes = {
   // ЮKassa → уведомления payment.succeeded / payment.canceled.
   // Телу не доверяем: статус платежа всегда перепроверяем запросом в API.
   'POST /api/yookassa/webhook': async req => {
+    if (limited(req, 'payment-webhook', 120)) return [429, { error: 'Слишком много запросов' }];
     const body = await readJson(req);
-    const id = body && body.object && body.object.id;
-    if (!id || !String(body.event || '').startsWith('payment.')) return { ok: true };
+    const id = body?.object?.id;
+    if (!['payment.succeeded', 'payment.canceled'].includes(body?.event)
+      || typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return { ok: true };
     const payment = await getPayment(id);
     const order = getOrder(payment.metadata && payment.metadata.order_id);
     if (!order) { console.warn('[webhook] нет заказа для платежа', id); return { ok: true }; }
+    // ЮKassa может прислать уведомление до сохранения ответа о создании платежа.
+    if (!order.payment?.id && order.status === 'pending') return [503, { error: 'Платёж ещё сохраняется' }];
     await applyPayment(order, payment);
     return { ok: true };
   },
@@ -385,7 +387,7 @@ setInterval(async () => {
 // Повтор писем, которые не ушли из-за сбоя (только свежие заказы, не старше 3 дней)
 setInterval(async () => {
   const since = Date.now() - 3 * 864e5;
-  for (const o of listOrdersWithMailErrors()) {
+  for (const o of listOrdersNeedingMail()) {
     if (busy.has(o.id) || !(Date.parse(o.paidAt || o.createdAt) > since)) continue;
     busy.add(o.id);
     try {

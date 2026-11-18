@@ -172,8 +172,12 @@ export async function syncSale(order) {
     const data = saleRows(order, last + 1, s.keys);
     if (data.length) {
       const separator = process.env.SHEETS_FORMULA_SEPARATOR || ',';
-      const formatted = data.map(r => ({ ...r, values: r.values.map(row => row.map(v =>
-        typeof v === 'string' && v.startsWith('=') ? v.replaceAll(',', separator) : v)) }));
+      const formatted = data.map(r => ({ ...r, values: r.values.map(row => row.map((v, column) => {
+        if (typeof v !== 'string' || !v) return v;
+        if ([0, 6, 7].includes(column)) return v.replaceAll(',', separator);
+        if (column === 1) return v; // Дата сформирована сервером.
+        return "'" + v; // USER_ENTERED сохраняет строку буквально после апострофа.
+      })) }));
       await api('/values:batchUpdate', { valueInputOption: 'USER_ENTERED', data: formatted });
       cache = null;
     }

@@ -13,6 +13,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Установить зависимости API и проверить уязвимости
+        working-directory: server
+        run: |
+          npm ci --omit=dev --ignore-scripts
+          npm audit --omit=dev --audit-level=moderate
       - name: Проверить JavaScript
         run: |
           for f in server/*.js js/*.js; do node --check "$f"; done
@@ -21,9 +26,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: coulair-api
+          include-hidden-files: true
           path: |
             server/*.js
             server/package*.json
+            server/node_modules/**
+            server/nginx-security-headers.conf
             server/README.md
             server/CDEK_SETUP.md
             server/cdek-credentials.example.json

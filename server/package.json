@@ -6,8 +6,10 @@
   "scripts": {
     "start": "node --env-file=.env server.js"
   },
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
-    "nodemailer": "^6.9.16"
+    "nodemailer": "10.6.0"
   }
 }
